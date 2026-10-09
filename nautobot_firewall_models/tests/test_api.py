@@ -4,7 +4,8 @@
 from unittest import mock
 
 from django.contrib.contenttypes.models import ContentType
-from nautobot.apps.testing import APIViewTestCases, disable_warnings
+from django.urls import reverse
+from nautobot.apps.testing import APITestCase, APIViewTestCases, disable_warnings
 from nautobot.dcim.models import Device, DeviceType, Location, Platform
 from nautobot.extras.models import Role, Status
 from nautobot.ipam.models import VRF, Prefix
@@ -335,6 +336,27 @@ class ZoneAPIViewTest(APIViewTestCases.APIViewTestCase):
         fixtures.create_zone()
 
 
+class ZoneGroupAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewTestCase):
+    """Test the ZoneGroup viewsets."""
+
+    model = models.ZoneGroup
+    bulk_update_data = {"description": "test update description"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data for API calls."""
+        fixtures.create_zone_group()
+        zone = models.Zone.objects.first()
+        models.ZoneGroup.objects.create(name="deleteableobj1")
+        models.ZoneGroup.objects.create(name="deleteableobj2")
+        models.ZoneGroup.objects.create(name="deleteableobj3")
+
+        cls.create_data = [
+            {"name": "test1", "zones": [zone.id]},
+            {"name": "test2", "zones": [zone.id]},
+        ]
+
+
 class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewTestCase):
     """Test the PolicyRule viewsets."""
 
@@ -494,3 +516,81 @@ class PolicyDeviceM2MAPIViewTest(APIViewTestCases.APIViewTestCase):
             {"device": dev1.id, "policy": policy.id, "weight": 100},
             {"device": dev2.id, "policy": policy.id, "weight": 200},
         ]
+
+
+class ExpandedZonesAPITest(APITestCase):
+    """Test that rules expose their zone groups expanded into zones over REST and GraphQL."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a rule of each type with a zone and zone groups on both sides."""
+        outside, inside, _ = fixtures.create_zone_group()
+        wan = models.Zone.objects.get(name="WAN")
+        cls.policy_rule = models.PolicyRule.objects.create(name="expanded", action="allow")
+        cls.policy_rule.source_zones.set([wan])
+        cls.policy_rule.source_zone_groups.set([outside])
+        cls.policy_rule.destination_zone_groups.set([inside])
+        cls.nat_rule = models.NATPolicyRule.objects.create(name="expanded nat")
+        cls.nat_rule.source_zone_groups.set([inside])
+        cls.nat_rule.destination_zones.set([wan])
+
+    def setUp(self):
+        """Grant view access to the rules and zones."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.view_policyrule",
+            "nautobot_firewall_models.view_natpolicyrule",
+            "nautobot_firewall_models.view_zone",
+            "nautobot_firewall_models.view_zonegroup",
+        )
+
+    def _get_names(self, route, obj, field):
+        url = reverse(f"plugins-api:nautobot_firewall_models-api:{route}-detail", kwargs={"pk": obj.pk})
+        response = self.client.get(f"{url}?exclude_m2m=false", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        return [zone["name"] for zone in response.data[field]]
+
+    def test_policy_rule_rest_expanded_zones(self):
+        """The PolicyRule API returns the zones with zone groups expanded and duplicates removed."""
+        self.assertEqual(self._get_names("policyrule", self.policy_rule, "expanded_source_zones"), ["WAN"])
+        self.assertEqual(self._get_names("policyrule", self.policy_rule, "expanded_destination_zones"), ["DMZ", "LAN"])
+
+    def test_nat_policy_rule_rest_expanded_zones(self):
+        """The NATPolicyRule API returns the zones with zone groups expanded."""
+        self.assertEqual(self._get_names("natpolicyrule", self.nat_rule, "expanded_source_zones"), ["DMZ", "LAN"])
+        self.assertEqual(self._get_names("natpolicyrule", self.nat_rule, "expanded_destination_zones"), ["WAN"])
+
+    def test_expanded_zones_are_read_only(self):
+        """The expanded fields are ignored on write, so zones can only be changed through the real fields."""
+        url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-detail", kwargs={"pk": self.policy_rule.pk})
+        self.add_permissions("nautobot_firewall_models.change_policyrule")
+        lan = models.Zone.objects.get(name="LAN")
+        response = self.client.patch(url, {"expanded_source_zones": [str(lan.pk)]}, format="json", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        self.assertEqual(list(self.policy_rule.expanded_source_zones().values_list("name", flat=True)), ["WAN"])
+
+    def test_graphql_expanded_zones(self):
+        """GraphQL exposes the expanded zones on both rule types."""
+        query = """
+        query {
+          policy_rules(name: "expanded") {
+            source_zone_groups { name }
+            expanded_source_zones { name }
+            expanded_destination_zones { name }
+          }
+          nat_policy_rules(name: "expanded nat") {
+            expanded_source_zones { name }
+            expanded_destination_zones { name }
+          }
+        }
+        """
+        response = self.client.post(reverse("graphql-api"), {"query": query}, format="json", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        self.assertNotIn("errors", response.data)
+        rule = response.data["data"]["policy_rules"][0]
+        self.assertEqual(rule["source_zone_groups"], [{"name": "outside"}])
+        self.assertEqual(rule["expanded_source_zones"], [{"name": "WAN"}])
+        self.assertEqual(rule["expanded_destination_zones"], [{"name": "DMZ"}, {"name": "LAN"}])
+        nat_rule = response.data["data"]["nat_policy_rules"][0]
+        self.assertEqual(nat_rule["expanded_source_zones"], [{"name": "DMZ"}, {"name": "LAN"}])
+        self.assertEqual(nat_rule["expanded_destination_zones"], [{"name": "WAN"}])

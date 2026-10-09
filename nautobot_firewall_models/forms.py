@@ -517,6 +517,47 @@ class ZoneBulkEditForm(NautobotBulkEditForm):
         nullable_fields = ["description", "vrfs", "interfaces"]
 
 
+class ZoneGroupFilterForm(NautobotFilterForm):
+    """Filter form to filter searches."""
+
+    field_order = ["q", "name"]
+
+    model = models.ZoneGroup
+    q = forms.CharField(
+        required=False,
+        label="Search",
+        help_text="Search within Name or Description.",
+    )
+    name = forms.CharField(required=False, label="Name")
+    zones = DynamicModelChoiceField(queryset=models.Zone.objects.all(), required=False, label="Zone")
+
+
+class ZoneGroupForm(NautobotModelForm):
+    """ZoneGroup creation/edit form."""
+
+    zones = DynamicModelMultipleChoiceField(queryset=models.Zone.objects.all(), required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.ZoneGroup
+        fields = ["name", "description", "zones", "status", "tags"]
+
+
+class ZoneGroupBulkEditForm(NautobotBulkEditForm):
+    """ZoneGroup bulk edit form."""
+
+    pk = DynamicModelMultipleChoiceField(queryset=models.ZoneGroup.objects.all(), widget=forms.MultipleHiddenInput)
+    description = forms.CharField(required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        nullable_fields = [
+            "description",
+        ]
+
+
 class PolicyRuleFilterForm(NautobotFilterForm):
     """Filter form to filter searches."""
 
@@ -548,7 +589,12 @@ class PolicyRuleForm(NautobotModelForm):
     source_address_groups = DynamicModelMultipleChoiceField(
         queryset=models.AddressObjectGroup.objects.all(), label="Source Address Object Groups", required=False
     )
-    source_zone = DynamicModelChoiceField(queryset=models.Zone.objects.all(), label="Source Zone", required=False)
+    source_zones = DynamicModelMultipleChoiceField(
+        queryset=models.Zone.objects.all(), label="Source Zones", required=False
+    )
+    source_zone_groups = DynamicModelMultipleChoiceField(
+        queryset=models.ZoneGroup.objects.all(), label="Source Zone Groups", required=False
+    )
     source_services = DynamicModelMultipleChoiceField(
         queryset=models.ServiceObject.objects.all(), label="Source Service Objects", required=False
     )
@@ -561,8 +607,11 @@ class PolicyRuleForm(NautobotModelForm):
     destination_address_groups = DynamicModelMultipleChoiceField(
         queryset=models.AddressObjectGroup.objects.all(), label="Destination Address Object Groups", required=False
     )
-    destination_zone = DynamicModelChoiceField(
-        queryset=models.Zone.objects.all(), label="Destination Zone", required=False
+    destination_zones = DynamicModelMultipleChoiceField(
+        queryset=models.Zone.objects.all(), label="Destination Zones", required=False
+    )
+    destination_zone_groups = DynamicModelMultipleChoiceField(
+        queryset=models.ZoneGroup.objects.all(), label="Destination Zone Groups", required=False
     )
     destination_services = DynamicModelMultipleChoiceField(
         queryset=models.ServiceObject.objects.all(), label="Destination Service Objects", required=False
@@ -592,12 +641,14 @@ class PolicyRuleForm(NautobotModelForm):
             "source_user_groups",
             "source_addresses",
             "source_address_groups",
-            "source_zone",
+            "source_zones",
+            "source_zone_groups",
             "source_services",
             "source_service_groups",
             "destination_addresses",
             "destination_address_groups",
-            "destination_zone",
+            "destination_zones",
+            "destination_zone_groups",
             "destination_services",
             "destination_service_groups",
             "applications",
@@ -710,9 +761,17 @@ class NATPolicyRuleForm(NautobotModelForm):
     request_id = forms.CharField(required=False, label="Optional field for request ticket identifier.")
 
     # Data that can not undergo a translation
-    source_zone = DynamicModelChoiceField(queryset=models.Zone.objects.all(), label="Source Zone", required=False)
-    destination_zone = DynamicModelChoiceField(
-        queryset=models.Zone.objects.all(), label="Destination Zone", required=False
+    source_zones = DynamicModelMultipleChoiceField(
+        queryset=models.Zone.objects.all(), label="Source Zones", required=False
+    )
+    source_zone_groups = DynamicModelMultipleChoiceField(
+        queryset=models.ZoneGroup.objects.all(), label="Source Zone Groups", required=False
+    )
+    destination_zones = DynamicModelMultipleChoiceField(
+        queryset=models.Zone.objects.all(), label="Destination Zones", required=False
+    )
+    destination_zone_groups = DynamicModelMultipleChoiceField(
+        queryset=models.ZoneGroup.objects.all(), label="Destination Zone Groups", required=False
     )
 
     # Original source data
@@ -790,8 +849,10 @@ class NATPolicyRuleForm(NautobotModelForm):
         fields = (
             # pylint: disable=duplicate-code
             "name",
-            "source_zone",
-            "destination_zone",
+            "source_zones",
+            "source_zone_groups",
+            "destination_zones",
+            "destination_zone_groups",
             "original_source_addresses",
             "original_source_address_groups",
             "original_source_services",

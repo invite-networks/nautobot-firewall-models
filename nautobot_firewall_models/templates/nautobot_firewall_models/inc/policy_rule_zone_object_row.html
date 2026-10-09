@@ -1,7 +1,11 @@
 {% load helpers %}
-
-{% if zone %}
-  <i title="Zone Object" class="mdi mdi-flag"> <a href="{{ zone.get_absolute_url }}">{{ zone|placeholder }}</a><br/>
+{% if zone_group or zone %}
+  {% for i in zone_group %}
+    <i title="Zone Group" class="mdi mdi-flag-variant"></i> <a href="{{ i.get_absolute_url }}" title="{% for zone_obj in i.zones.all %}{{ zone_obj }}&#013;{% endfor %}">{{ i|placeholder }}</a><br/>
+  {% endfor %}
+  {% for i in zone %}
+    <i title="Zone Object" class="mdi mdi-flag"></i> <a href="{{ i.get_absolute_url }}">{{ i|placeholder }}</a><br/>
+  {% endfor %}
 {% else %}
-  <span title="No Zone set, implicit any" data-bs-toggle="tooltip">ANY</span>
+  <span title="No Zone or Zone Group set, implicit any" data-bs-toggle="tooltip">ANY</span>
 {% endif %}

@@ -19,3 +19,18 @@ class ZoneUIViewSet(NautobotUIViewSet):
     object_detail_content = details.zone
 
     lookup_field = "pk"
+
+
+class ZoneGroupUIViewSet(NautobotUIViewSet):
+    """ViewSet for the ZoneGroup model."""
+
+    bulk_update_form_class = forms.ZoneGroupBulkEditForm
+    filterset_class = filters.ZoneGroupFilterSet
+    filterset_form_class = forms.ZoneGroupFilterForm
+    form_class = forms.ZoneGroupForm
+    queryset = models.ZoneGroup.objects.all()
+    serializer_class = serializers.ZoneGroupSerializer
+    table_class = tables.ZoneGroupTable
+    object_detail_content = details.zone_group
+
+    lookup_field = "pk"

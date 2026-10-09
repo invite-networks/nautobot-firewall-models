@@ -38,7 +38,16 @@ Example GraphQL query showing how to get instances for each of the models provid
           username
         }
       }
-      source_zone {
+      source_zones {
+        name
+      }
+      source_zone_groups {
+        name
+        zones {
+          name
+        }
+      }
+      expanded_source_zones {
         name
       }
       source_address {
@@ -61,7 +70,16 @@ Example GraphQL query showing how to get instances for each of the models provid
           }
         }
       }
-      destination_zone {
+      destination_zones {
+        name
+      }
+      destination_zone_groups {
+        name
+        zones {
+          name
+        }
+      }
+      expanded_destination_zones {
         name
       }
       destination_address {
@@ -88,6 +106,8 @@ Example GraphQL query showing how to get instances for each of the models provid
   }
 }
 ```
+
+A rule can reference Zones directly, Zone Groups, or both. The `expanded_source_zones` and `expanded_destination_zones` fields return the combined, de-duplicated list of Zones with every Zone Group resolved into its members, which is what deployment tooling should use. An empty list means no Zone was set (implicit any). The same fields are available on NAT Policy Rules and in the REST API.
 
 #### Response
 
@@ -127,7 +147,28 @@ Example GraphQL query showing how to get instances for each of the models provid
                 ]
               }
             ],
-            "source_zone": null,
+            "source_zones": [],
+            "source_zone_groups": [
+              {
+                "name": "inside",
+                "zones": [
+                  {
+                    "name": "DMZ"
+                  },
+                  {
+                    "name": "LAN"
+                  }
+                ]
+              }
+            ],
+            "expanded_source_zones": [
+              {
+                "name": "DMZ"
+              },
+              {
+                "name": "LAN"
+              }
+            ],
             "source_address": [
               {
                 "ip_address": null,
@@ -156,7 +197,17 @@ Example GraphQL query showing how to get instances for each of the models provid
                 ]
               }
             ],
-            "destination_zone": null,
+            "destination_zones": [
+              {
+                "name": "WAN"
+              }
+            ],
+            "destination_zone_groups": [],
+            "expanded_destination_zones": [
+              {
+                "name": "WAN"
+              }
+            ],
             "destination_address": [
               {
                 "ip_address": null,

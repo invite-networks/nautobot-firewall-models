@@ -154,10 +154,26 @@ class UserObjectGroupFilterSet(BaseFilterSet, NautobotFilterSet):
 class ZoneFilterSet(BaseFilterSet, NautobotFilterSet):
     """Filter for Zone."""
 
+    zone_groups = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="zone_groups",
+        queryset=models.ZoneGroup.objects.all(),
+        label="Zone Groups (name or ID)",
+    )
+
     class Meta:
         """Meta attributes for filter."""
 
         model = models.Zone
+        fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
+
+
+class ZoneGroupFilterSet(BaseFilterSet, NautobotFilterSet):
+    """Filter for ZoneGroup."""
+
+    class Meta:
+        """Meta attributes for filter."""
+
+        model = models.ZoneGroup
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 

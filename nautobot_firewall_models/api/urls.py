@@ -25,6 +25,7 @@ router.register("service-object-group", views.ServiceObjectGroupViewSet)
 router.register("user-object", views.UserObjectViewSet)
 router.register("user-object-group", views.UserObjectGroupViewSet)
 router.register("zone", views.ZoneViewSet)
+router.register("zone-group", views.ZoneGroupViewSet)
 
 app_name = "nautobot_firewall_models-api"
 urlpatterns = router.urls

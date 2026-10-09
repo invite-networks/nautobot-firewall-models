@@ -116,6 +116,19 @@ def create_zone():
     return zone1, zone2, zone3
 
 
+def create_zone_group():
+    """Creates 3 zone groups with overlapping zone membership."""
+    zone1, zone2, zone3 = create_zone()
+    status = Status.objects.get(name="Active")
+    zone_grp1, _ = ZoneGroup.objects.get_or_create(name="outside", status=status)
+    zone_grp1.zones.set([zone1])
+    zone_grp2, _ = ZoneGroup.objects.get_or_create(name="inside", status=status)
+    zone_grp2.zones.set([zone2, zone3])
+    zone_grp3, _ = ZoneGroup.objects.get_or_create(name="everything", status=status)
+    zone_grp3.zones.set([zone1, zone2, zone3])
+    return zone_grp1, zone_grp2, zone_grp3
+
+
 def create_app_obj():
     """Creates 3 of all objects."""
     status = Status.objects.get(name="Active")
@@ -171,7 +184,7 @@ def create_app_group():
     return app_grp1, app_grp2, app_grp3
 
 
-def create_policy_rule():  # pylint: disable=too-many-locals
+def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statements
     """Creates 3 of all objects."""
     app1, app2, app3 = create_app_obj()
     app_grp1, app_grp2, app_grp3 = create_app_group()
@@ -204,8 +217,6 @@ def create_policy_rule():  # pylint: disable=too-many-locals
     pol_rule1.applications.set([app1])
     pol_rule1.application_groups.set([app_grp1])
     pol_rule2, _ = PolicyRule.objects.get_or_create(
-        source_zone=zone1,
-        destination_zone=zone2,
         action="allow",
         log=True,
         name="Policy Rule 2",
@@ -214,6 +225,8 @@ def create_policy_rule():  # pylint: disable=too-many-locals
         index=20,
         description="some description",
     )
+    pol_rule2.source_zones.set([zone1])
+    pol_rule2.destination_zones.set([zone2])
     pol_rule2.source_users.set([usr_obj1, usr_obj2])
     pol_rule2.source_user_groups.set([usr_grp1, usr_grp2])
     pol_rule2.source_addresses.set([addr_obj1, addr_obj2])
@@ -225,8 +238,6 @@ def create_policy_rule():  # pylint: disable=too-many-locals
     pol_rule2.applications.set([app2])
     pol_rule2.application_groups.set([app_grp2])
     pol_rule3, _ = PolicyRule.objects.get_or_create(
-        source_zone=zone1,
-        destination_zone=zone2,
         action="drop",
         log=True,
         name="Policy Rule 3",
@@ -235,6 +246,8 @@ def create_policy_rule():  # pylint: disable=too-many-locals
         index=30,
         description="some description",
     )
+    pol_rule3.source_zones.set([zone1])
+    pol_rule3.destination_zones.set([zone2])
     pol_rule3.source_users.set([usr_obj1, usr_obj2, usr_obj3])
     pol_rule3.source_user_groups.set([usr_grp1, usr_grp2, usr_grp3])
     pol_rule3.source_addresses.set([addr_obj1, addr_obj2, addr_obj3])
@@ -409,19 +422,16 @@ def create_sample_env():
     zoneall, _ = Zone.objects.get_or_create(name="all", status=status)
 
     pol_rule1 = PolicyRule.objects.get(name="Policy Rule 1")
-    pol_rule1.source_zone = Zone.objects.get(name="DMZ")
-    pol_rule1.destination_zone = Zone.objects.get(name="WAN")
-    pol_rule1.validated_save()
+    pol_rule1.source_zones.set([Zone.objects.get(name="DMZ")])
+    pol_rule1.destination_zones.set([Zone.objects.get(name="WAN")])
 
     pol_rule4 = PolicyRule.objects.get(name="END OF ACCESS LIST")
-    pol_rule4.source_zone = zoneall
-    pol_rule4.destination_zone = zoneall
-    pol_rule4.validated_save()
+    pol_rule4.source_zones.set([zoneall])
+    pol_rule4.destination_zones.set([zoneall])
 
     pol_rule5 = PolicyRule.objects.get(name="DENY ALL")
-    pol_rule5.source_zone = zoneall
-    pol_rule5.destination_zone = zoneall
-    pol_rule5.validated_save()
+    pol_rule5.source_zones.set([zoneall])
+    pol_rule5.destination_zones.set([zoneall])
 
     ip_address, _ = IPAddr.objects.get_or_create(
         address="10.0.0.100", status=status, parent=Prefix.objects.get(network="10.0.0.0", namespace=namespace)

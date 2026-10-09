@@ -102,6 +102,12 @@ menu_items = (
                         weight=100,
                         permissions=["nautobot_firewall_models.view_zone"],
                     ),
+                    NavMenuItem(
+                        link="plugins:nautobot_firewall_models:zonegroup_list",
+                        name="Zone Groups",
+                        weight=200,
+                        permissions=["nautobot_firewall_models.view_zonegroup"],
+                    ),
                 ],
             ),
             NavMenuGroup(

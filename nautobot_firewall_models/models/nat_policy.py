@@ -7,6 +7,7 @@ from nautobot.core.models.generics import BaseModel, PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
+from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
 ###########################
@@ -19,7 +20,7 @@ from nautobot_firewall_models.utils import get_default_status, model_to_json
     "custom_links",
     "custom_validators",
     "export_templates",
-    "graphql",
+    # "graphql" is omitted on purpose: nautobot_firewall_models.graphql.types provides a custom type.
     "relationships",
     "statuses",
     "webhooks",
@@ -45,21 +46,29 @@ class NATPolicyRule(PrimaryModel):
     index = models.PositiveSmallIntegerField(null=True, blank=True)
 
     # Data that can not undergo a translation
-    source_zone = models.ForeignKey(
-        to="nautobot_firewall_models.Zone",
-        null=True,
+    source_zones = models.ManyToManyField(
         blank=True,
-        on_delete=models.SET_NULL,
+        to="nautobot_firewall_models.Zone",
         related_name="source_nat_policy_rules",
-        verbose_name="Source Zone",
+        verbose_name="Source Zones",
     )
-    destination_zone = models.ForeignKey(
-        to="nautobot_firewall_models.Zone",
-        on_delete=models.SET_NULL,
-        null=True,
+    source_zone_groups = models.ManyToManyField(
         blank=True,
+        to="nautobot_firewall_models.ZoneGroup",
+        related_name="source_nat_policy_rules",
+        verbose_name="Source Zone Groups",
+    )
+    destination_zones = models.ManyToManyField(
+        blank=True,
+        to="nautobot_firewall_models.Zone",
         related_name="destination_nat_policy_rules",
-        verbose_name="Destination Zone",
+        verbose_name="Destination Zones",
+    )
+    destination_zone_groups = models.ManyToManyField(
+        blank=True,
+        to="nautobot_firewall_models.ZoneGroup",
+        related_name="destination_nat_policy_rules",
+        verbose_name="Destination Zone Groups",
     )
 
     # Original source data
@@ -167,8 +176,10 @@ class NATPolicyRule(PrimaryModel):
     )
 
     clone_fields = [
-        "destination_zone",
-        "source_zone",
+        "source_zones",
+        "source_zone_groups",
+        "destination_zones",
+        "destination_zone_groups",
         "original_source_addresses",
         "original_source_address_groups",
         "original_source_services",
@@ -203,8 +214,10 @@ class NATPolicyRule(PrimaryModel):
         """Convenience method to convert to more consumable dictionary."""
         row = {}
         row["rule"] = self
-        row["source_zone"] = self.source_zone
-        row["destination_zone"] = self.destination_zone
+        row["source_zones"] = self.source_zones.all()
+        row["source_zone_groups"] = self.source_zone_groups.all()
+        row["destination_zones"] = self.destination_zones.all()
+        row["destination_zone_groups"] = self.destination_zone_groups.all()
 
         row["original_source_address_groups"] = self.original_source_address_groups.all()
         row["original_source_addresses"] = self.original_source_addresses.all()
@@ -231,6 +244,14 @@ class NATPolicyRule(PrimaryModel):
         row["status"] = self.status
         row["request_id"] = self.request_id
         return row
+
+    def expanded_source_zones(self):
+        """Return the source Zones with every source ZoneGroup expanded into its member Zones."""
+        return expand_zones(self.source_zones, self.source_zone_groups)
+
+    def expanded_destination_zones(self):
+        """Return the destination Zones with every destination ZoneGroup expanded into its member Zones."""
+        return expand_zones(self.destination_zones, self.destination_zone_groups)
 
     def to_json(self):
         """Convenience method to convert to json."""

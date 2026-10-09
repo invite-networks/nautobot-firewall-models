@@ -266,6 +266,30 @@ class ZoneUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         )
 
 
+class ZoneGroupUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
+    """Test the ZoneGroup viewsets."""
+
+    model = ZoneGroup
+    bulk_edit_data = {"description": "test update description"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data for UI calls."""
+        fixtures.create_zone_group()
+        zone = Zone.objects.first()
+        status = Status.objects.get(name="Active").id
+        ZoneGroup.objects.create(name="deleteableobj1")
+        ZoneGroup.objects.create(name="deleteableobj2")
+        ZoneGroup.objects.create(name="deleteableobj3")
+        cls.form_data = {"name": "test1", "zones": [zone.id], "status": status}
+        cls.csv_data = (
+            "name,zones,status",
+            f'csvobj1,"{zone.id}",Active',
+            f'csvobj2,"{zone.id}",Active',
+            f'csvobj3,"{zone.id}",Active',
+        )
+
+
 class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     """Test the PolicyRule viewsets."""
 

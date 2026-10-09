@@ -149,10 +149,34 @@ class ZoneSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         fields = "__all__"
 
 
+class ZoneGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+    """ZoneGroup Serializer."""
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.ZoneGroup
+        fields = "__all__"
+
+
+class ExpandedZoneSerializer(serializers.ModelSerializer):
+    """Read-only Zone representation for a rule's zones after its ZoneGroups are expanded."""
+
+    url = serializers.HyperlinkedIdentityField(view_name="plugins-api:nautobot_firewall_models-api:zone-detail")
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.Zone
+        fields = ["id", "url", "name"]
+
+
 class PolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """PolicyRule Serializer."""
 
     index = serializers.IntegerField(required=False, default=None)
+    expanded_source_zones = ExpandedZoneSerializer(many=True, read_only=True)
+    expanded_destination_zones = ExpandedZoneSerializer(many=True, read_only=True)
 
     class Meta:
         """Meta attributes."""
@@ -173,6 +197,9 @@ class PolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
 
 class NATPolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """PolicyRule Serializer."""
+
+    expanded_source_zones = ExpandedZoneSerializer(many=True, read_only=True)
+    expanded_destination_zones = ExpandedZoneSerializer(many=True, read_only=True)
 
     class Meta:
         """Meta attributes."""

@@ -38,8 +38,10 @@ class NATPolicyUIViewSet(NautobotUIViewSet):
     prefetch_related = [
         "nat_policy_rules__source_users",
         "nat_policy_rules__source_user_groups",
-        "nat_policy_rules__source_zone",
-        "nat_policy_rules__destination_zone",
+        "nat_policy_rules__source_zones",
+        "nat_policy_rules__source_zone_groups",
+        "nat_policy_rules__destination_zones",
+        "nat_policy_rules__destination_zone_groups",
         "nat_policy_rules__original_source_addresses",
         "nat_policy_rules__original_source_address_groups",
         "nat_policy_rules__original_source_services",

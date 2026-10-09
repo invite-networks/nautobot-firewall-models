@@ -9,6 +9,8 @@ from nautobot.ipam.models import IPAddress, Namespace, Prefix
 from nautobot_firewall_models import filters, models
 from nautobot_firewall_models.models import UserObject
 
+from . import fixtures
+
 
 class AddressObjectTestCase(FilterTestCases.FilterTestCase):
     """Test filtering operations for AddressObject Model."""
@@ -132,3 +134,34 @@ class UserObjectTestCase(FilterTestCases.FilterTestCase):
         """Test q filter on username field"""
         params = {"q": "user2"}
         self.assertEqual(self.filterset(params, self.queryset).qs.count(), 1)
+
+
+class ZoneTestCase(FilterTestCases.FilterTestCase):
+    """Test filtering operations for Zone Model."""
+
+    queryset = models.Zone.objects.all()
+    filterset = filters.ZoneFilterSet
+    generic_filter_tests = (
+        ("zone_groups", "zone_groups__id"),
+        ("zone_groups", "zone_groups__name"),
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data."""
+        fixtures.create_zone_group()
+        # A zone outside every group, so each group filter matches a strict subset of zones.
+        models.Zone.objects.create(name="Guest", status=Status.objects.get(name="Active"))
+
+
+class ZoneGroupTestCase(FilterTestCases.FilterTestCase):
+    """Test filtering operations for ZoneGroup Model."""
+
+    queryset = models.ZoneGroup.objects.all()
+    filterset = filters.ZoneGroupFilterSet
+    generic_filter_tests = (("name",),)
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data."""
+        fixtures.create_zone_group()

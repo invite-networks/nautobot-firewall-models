@@ -378,3 +378,21 @@ zone = ui.ObjectDetailContent(
         ),
     ),
 )
+
+zone_group = ui.ObjectDetailContent(
+    panels=(
+        ui.ObjectFieldsPanel(
+            section=ui.SectionChoices.LEFT_HALF,
+            weight=100,
+            fields=["name", "description", "status"],
+        ),
+        ui.ObjectsTablePanel(
+            weight=100,
+            section=ui.SectionChoices.FULL_WIDTH,
+            table_class=tables.ZoneTable,
+            table_filter="zone_groups",
+            related_field_name="zone_groups",
+            add_button_route=None,
+        ),
+    ),
+)

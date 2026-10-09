@@ -25,7 +25,7 @@ from .service import (
     ServiceObjectGroup,
 )
 from .user import UserObject, UserObjectGroup
-from .zone import Zone
+from .zone import Zone, ZoneGroup
 
 __all__ = (
     "AddressObject",
@@ -47,4 +47,5 @@ __all__ = (
     "UserObject",
     "UserObjectGroup",
     "Zone",
+    "ZoneGroup",
 )

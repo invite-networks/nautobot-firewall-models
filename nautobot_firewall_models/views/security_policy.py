@@ -38,8 +38,10 @@ class PolicyUIViewSet(NautobotUIViewSet):
     prefetch_related = [
         "policy_rules__source_users",
         "policy_rules__source_user_groups",
-        "policy_rules__source_zone",
-        "policy_rules__destination_zone",
+        "policy_rules__source_zones",
+        "policy_rules__source_zone_groups",
+        "policy_rules__destination_zones",
+        "policy_rules__destination_zone_groups",
         "policy_rules__original_source_addresses",
         "policy_rules__original_source_address_groups",
         "policy_rules__original_source_services",

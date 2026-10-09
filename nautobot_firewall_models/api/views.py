@@ -94,6 +94,14 @@ class ZoneViewSet(NautobotModelViewSet):
     filterset_class = filters.ZoneFilterSet
 
 
+class ZoneGroupViewSet(NautobotModelViewSet):
+    """ZoneGroup viewset."""
+
+    queryset = models.ZoneGroup.objects.all().prefetch_related("tags")
+    serializer_class = serializers.ZoneGroupSerializer
+    filterset_class = filters.ZoneGroupFilterSet
+
+
 class PolicyRuleViewSet(NautobotModelViewSet):
     """PolicyRule viewset."""
 

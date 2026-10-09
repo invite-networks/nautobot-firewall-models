@@ -335,3 +335,84 @@ class TestNATPolicyModels(TestCase):
                 id=json_details["translated_destination_services"][0]["id"]
             ).exists()
         )
+
+
+class TestZoneGroupModels(TestCase):
+    """Test the ZoneGroup model and how rules expand it."""
+
+    def setUp(self) -> None:
+        """Create the data."""
+        self.outside, self.inside, self.everything = fixtures.create_zone_group()
+        self.wan = Zone.objects.get(name="WAN")
+        self.lan = Zone.objects.get(name="LAN")
+        self.dmz = Zone.objects.get(name="DMZ")
+
+    def test_create_zone_group_only_required(self):
+        """Create ZoneGroup with only required fields, and validate null description and __str__."""
+        zone_group = ZoneGroup.objects.create(name="empty")
+
+        self.assertEqual(zone_group.description, "")
+        self.assertEqual(str(zone_group), "empty")
+        self.assertEqual(zone_group.zones.count(), 0)
+
+    def test_zone_group_reverse_relation(self):
+        """A Zone lists every ZoneGroup it belongs to."""
+        self.assertEqual(set(self.lan.zone_groups.all()), {self.inside, self.everything})
+
+    def test_policy_rule_expanded_zones_without_zones(self):
+        """A rule with no zones or zone groups expands to nothing (implicit any)."""
+        rule = PolicyRule.objects.create(name="no zones", action="allow")
+
+        self.assertEqual(list(rule.expanded_source_zones()), [])
+        self.assertEqual(list(rule.expanded_destination_zones()), [])
+
+    def test_policy_rule_expanded_zones(self):
+        """Zones set directly and zones reached through groups are combined without duplicates."""
+        rule = PolicyRule.objects.create(name="zone groups", action="allow")
+        rule.source_zones.set([self.wan])
+        rule.source_zone_groups.set([self.outside, self.inside])
+        rule.destination_zone_groups.set([self.inside, self.everything])
+
+        self.assertEqual(list(rule.expanded_source_zones()), [self.dmz, self.lan, self.wan])
+        self.assertEqual(list(rule.expanded_destination_zones()), [self.dmz, self.lan, self.wan])
+
+    def test_policy_rule_expanded_zones_reflects_group_changes(self):
+        """Expansion is evaluated on demand, so later group membership changes are picked up."""
+        rule = PolicyRule.objects.create(name="late change", action="allow")
+        rule.source_zone_groups.set([self.outside])
+        self.assertEqual(list(rule.expanded_source_zones()), [self.wan])
+
+        self.outside.zones.add(self.dmz)
+        self.assertEqual(list(rule.expanded_source_zones()), [self.dmz, self.wan])
+
+    def test_nat_policy_rule_expanded_zones(self):
+        """NAT rules expand zone groups the same way as security rules."""
+        rule = NATPolicyRule.objects.create(name="nat zone groups")
+        rule.source_zone_groups.set([self.inside])
+        rule.destination_zones.set([self.wan])
+
+        self.assertEqual(list(rule.expanded_source_zones()), [self.dmz, self.lan])
+        self.assertEqual(list(rule.expanded_destination_zones()), [self.wan])
+
+    def test_rule_details_include_zone_groups(self):
+        """rule_details exposes both the zones and the zone groups on each side."""
+        rule = PolicyRule.objects.create(name="details", action="allow")
+        rule.source_zone_groups.set([self.inside])
+        details = rule.rule_details()
+
+        self.assertEqual(list(details["source_zone_groups"]), [self.inside])
+        self.assertEqual(list(details["source_zones"]), [])
+        self.assertTrue({"destination_zones", "destination_zone_groups"}.issubset(details.keys()))
+
+    def test_zone_group_delete_protected_when_used_by_rule(self):
+        """A ZoneGroup assigned to a rule can not be deleted while protect_on_delete is enabled."""
+        rule = PolicyRule.objects.create(name="protected", action="allow")
+        rule.destination_zone_groups.set([self.outside])
+
+        with self.assertRaises(ValidationError):
+            self.outside.delete()
+
+    def test_zone_delete_protected_when_in_zone_group(self):
+        """A Zone that belongs to a ZoneGroup can not be deleted while protect_on_delete is enabled."""
+        with self.assertRaises(ValidationError):
+            self.dmz.delete()

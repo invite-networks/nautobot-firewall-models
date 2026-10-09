@@ -163,6 +163,21 @@ class ZoneTable(StatusTableMixin, BaseTable):
         fields = ("pk", "name", "vrfs", "interfaces", "description", "status")
 
 
+class ZoneGroupTable(StatusTableMixin, BaseTable):
+    """Table for list view."""
+
+    pk = ToggleColumn()
+    name = tables.Column(linkify=True)
+    zones = tables.ManyToManyColumn(linkify_item=True)
+    actions = ButtonsColumn(models.ZoneGroup, buttons=("edit", "delete"))
+
+    class Meta(BaseTable.Meta):
+        """Meta attributes."""
+
+        model = models.ZoneGroup
+        fields = ("pk", "name", "zones", "description", "status")
+
+
 # TODO: refactor
 class PolicyRuleTable(StatusTableMixin, BaseTable):
     """Table for list view."""
@@ -183,12 +198,14 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             "source_user_groups",
             "source_addresses",
             "source_address_groups",
-            "source_zone",
+            "source_zones",
+            "source_zone_groups",
             "source_services",
             "source_service_groups",
             "destination_addresses",
             "destination_address_groups",
-            "destination_zone",
+            "destination_zones",
+            "destination_zone_groups",
             "destination_services",
             "destination_service_groups",
             "applications",
@@ -207,12 +224,14 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             "source_user_groups",
             "source_addresses",
             "source_address_groups",
-            "source_zone",
+            "source_zones",
+            "source_zone_groups",
             "source_services",
             "source_service_groups",
             "destination_addresses",
             "destination_address_groups",
-            "destination_zone",
+            "destination_zones",
+            "destination_zone_groups",
             "destination_services",
             "destination_service_groups",
             "applications",
@@ -256,8 +275,10 @@ class NATPolicyRuleTable(StatusTableMixin, BaseTable):
             # pylint: disable=duplicate-code
             "pk",
             "name",
-            "source_zone",
-            "destination_zone",
+            "source_zones",
+            "source_zone_groups",
+            "destination_zones",
+            "destination_zone_groups",
             "original_source_addresses",
             "original_source_address_groups",
             "original_source_services",
@@ -285,8 +306,10 @@ class NATPolicyRuleTable(StatusTableMixin, BaseTable):
             # pylint: disable=duplicate-code
             "pk",
             "name",
-            "source_zone",
-            "destination_zone",
+            "source_zones",
+            "source_zone_groups",
+            "destination_zones",
+            "destination_zone_groups",
             "original_source_addresses",
             "original_source_address_groups",
             "original_source_services",

@@ -15,7 +15,7 @@ from nautobot_firewall_models.views.service import (
     ServiceObjectUIViewSet,
 )
 from nautobot_firewall_models.views.user import UserObjectGroupUIViewSet, UserObjectUIViewSet
-from nautobot_firewall_models.views.zone import ZoneUIViewSet
+from nautobot_firewall_models.views.zone import ZoneGroupUIViewSet, ZoneUIViewSet
 
 __all__ = (
     "AddressObjectUIViewSet",
@@ -33,4 +33,5 @@ __all__ = (
     "UserObjectUIViewSet",
     "UserObjectGroupUIViewSet",
     "ZoneUIViewSet",
+    "ZoneGroupUIViewSet",
 )

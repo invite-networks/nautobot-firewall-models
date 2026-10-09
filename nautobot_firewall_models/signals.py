@@ -67,6 +67,13 @@ ON_DELETE = {
         "policy_rules",
     ],
     models.Zone: [
+        "zone_groups",
+        "source_policy_rules",
+        "destination_policy_rules",
+        "source_nat_policy_rules",
+        "destination_nat_policy_rules",
+    ],
+    models.ZoneGroup: [
         "source_policy_rules",
         "destination_policy_rules",
         "source_nat_policy_rules",
@@ -97,6 +104,7 @@ if PLUGIN_CFG["protect_on_delete"]:
     @receiver(pre_delete, sender=models.UserObject)
     @receiver(pre_delete, sender=models.UserObjectGroup)
     @receiver(pre_delete, sender=models.Zone)
+    @receiver(pre_delete, sender=models.ZoneGroup)
     @receiver(pre_delete, sender=models.PolicyRule)
     @receiver(pre_delete, sender=models.NATPolicyRule)
     def on_delete_handler(instance, **kwargs):

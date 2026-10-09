@@ -8,6 +8,7 @@ from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models import choices
+from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
 ###########################
@@ -20,7 +21,7 @@ from nautobot_firewall_models.utils import get_default_status, model_to_json
     "custom_links",
     "custom_validators",
     "export_templates",
-    "graphql",
+    # "graphql" is omitted on purpose: nautobot_firewall_models.graphql.types provides a custom type.
     "relationships",
     "statuses",
     "webhooks",
@@ -54,12 +55,17 @@ class PolicyRule(PrimaryModel):
         related_name="source_policy_rules",
         verbose_name="Source Address Groups",
     )
-    source_zone = models.ForeignKey(
-        to="nautobot_firewall_models.Zone",
-        null=True,
+    source_zones = models.ManyToManyField(
         blank=True,
-        on_delete=models.SET_NULL,
+        to="nautobot_firewall_models.Zone",
         related_name="source_policy_rules",
+        verbose_name="Source Zones",
+    )
+    source_zone_groups = models.ManyToManyField(
+        blank=True,
+        to="nautobot_firewall_models.ZoneGroup",
+        related_name="source_policy_rules",
+        verbose_name="Source Zone Groups",
     )
     source_services = models.ManyToManyField(
         blank=True,
@@ -85,13 +91,17 @@ class PolicyRule(PrimaryModel):
         related_name="destination_policy_rules",
         verbose_name="Destination Address Groups",
     )
-    destination_zone = models.ForeignKey(
-        to="nautobot_firewall_models.Zone",
-        on_delete=models.SET_NULL,
-        null=True,
+    destination_zones = models.ManyToManyField(
         blank=True,
+        to="nautobot_firewall_models.Zone",
         related_name="destination_policy_rules",
-        verbose_name="Destination Zone",
+        verbose_name="Destination Zones",
+    )
+    destination_zone_groups = models.ManyToManyField(
+        blank=True,
+        to="nautobot_firewall_models.ZoneGroup",
+        related_name="destination_policy_rules",
+        verbose_name="Destination Zone Groups",
     )
     destination_services = models.ManyToManyField(
         blank=True,
@@ -130,12 +140,14 @@ class PolicyRule(PrimaryModel):
         "source_user_groups",
         "source_addresses",
         "source_address_groups",
-        "source_zone",
+        "source_zones",
+        "source_zone_groups",
         "source_services",
         "source_service_groups",
         "destination_addresses",
         "destination_address_groups",
-        "destination_zone",
+        "destination_zones",
+        "destination_zone_groups",
         "destination_services",
         "destination_service_groups",
         "action",
@@ -158,13 +170,15 @@ class PolicyRule(PrimaryModel):
         row["source_addresses"] = self.source_addresses.all()
         row["source_users"] = self.source_users.all()
         row["source_user_groupes"] = self.source_user_groups.all()
-        row["source_zone"] = self.source_zone
+        row["source_zones"] = self.source_zones.all()
+        row["source_zone_groups"] = self.source_zone_groups.all()
         row["source_services"] = self.source_services.all()
         row["source_service_groups"] = self.source_service_groups.all()
 
         row["destination_address_groups"] = self.destination_address_groups.all()
         row["destination_addresses"] = self.destination_addresses.all()
-        row["destination_zone"] = self.destination_zone
+        row["destination_zones"] = self.destination_zones.all()
+        row["destination_zone_groups"] = self.destination_zone_groups.all()
         row["destination_services"] = self.destination_services.all()
         row["destination_service_groups"] = self.destination_service_groups.all()
 
@@ -173,6 +187,14 @@ class PolicyRule(PrimaryModel):
         row["status"] = self.status
         row["request_id"] = self.request_id
         return row
+
+    def expanded_source_zones(self):
+        """Return the source Zones with every source ZoneGroup expanded into its member Zones."""
+        return expand_zones(self.source_zones, self.source_zone_groups)
+
+    def expanded_destination_zones(self):
+        """Return the destination Zones with every destination ZoneGroup expanded into its member Zones."""
+        return expand_zones(self.destination_zones, self.destination_zone_groups)
 
     def to_json(self):
         """Convience method to convert to json."""

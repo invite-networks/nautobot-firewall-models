@@ -24,6 +24,7 @@ router.register("service-object-group", views.ServiceObjectGroupUIViewSet)
 router.register("user-object", views.UserObjectUIViewSet)
 router.register("user-object-group", views.UserObjectGroupUIViewSet)
 router.register("zone", views.ZoneUIViewSet)
+router.register("zone-group", views.ZoneGroupUIViewSet)
 
 urlpatterns = [
     path("docs/", RedirectView.as_view(url=static("nautobot_firewall_models/docs/index.html")), name="docs"),

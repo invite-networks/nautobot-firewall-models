@@ -1,6 +1,6 @@
 [project]
 name = "nautobot-firewall-models"
-version = "3.0.1"
+version = "4.0.0"
 description = "Nautobot App to model firewall and security objects. Allows users to model policies in a vendor-neutral manner and use that data to drive network security automation"
 authors = [
     { name = "Network to Code, LLC", email = "opensource@networktocode.com" },
@@ -177,7 +177,7 @@ build-backend = "hatchling.build"
 [tool.towncrier]
 package = "nautobot_firewall_models"
 directory = "changes"
-filename = "docs/admin/release_notes/version_3.0.md"
+filename = "docs/admin/release_notes/version_4.0.md"
 template = "development/towncrier_template.j2"
 start_string = "<!-- towncrier release notes start -->"
 issue_format = "[#{issue}](https://github.com/invite-networks/nautobot-firewall-models/issues/{issue})"
