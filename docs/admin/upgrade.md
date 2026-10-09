@@ -16,7 +16,9 @@ The database migration copies each rule's existing source and destination Zone i
 - GraphQL: query `source_zones { name }` instead of `source_zone { name }`.
 - Deployment tooling: read `expanded_source_zones` and `expanded_destination_zones`, which already resolve Zone Groups into their member Zones.
 
-Rolling the migration back keeps only the first Zone (by name) on each side of a rule and drops all Zone Group assignments.
+Zones also gain a `devices` field so one Zone can be bound to multiple Devices. The upgrade binds each existing Zone to every Device that owns one of its Interfaces, so no manual step is needed. Set it over REST with `"devices": ["<device id>", ...]`, or filter Zones with `?devices=<device name or id>`. With `protect_on_delete` enabled, a Device can't be deleted while it is bound to a Zone.
+
+Rolling the migrations back keeps only the first Zone (by name) on each side of a rule and drops all Zone Group assignments and Zone to Device bindings.
 
 ## Upgrade Guide
 

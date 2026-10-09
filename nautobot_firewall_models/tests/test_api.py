@@ -594,3 +594,52 @@ class ExpandedZonesAPITest(APITestCase):
         nat_rule = response.data["data"]["nat_policy_rules"][0]
         self.assertEqual(nat_rule["expanded_source_zones"], [{"name": "DMZ"}, {"name": "LAN"}])
         self.assertEqual(nat_rule["expanded_destination_zones"], [{"name": "WAN"}])
+
+
+class ZoneDevicesAPITest(APITestCase):
+    """Test that a Zone can be bound to several Devices over REST and read back over GraphQL."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create firewalls to bind zones to."""
+        fixtures.assign_policies()
+        cls.devices = list(Device.objects.filter(name__in=["DFW02-WAN00", "HOU02-WAN00"]))
+
+    def setUp(self):
+        """Grant access to zones and devices."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_zone",
+            "nautobot_firewall_models.view_zone",
+            "dcim.view_device",
+            "extras.view_status",
+        )
+
+    def test_create_zone_with_multiple_devices(self):
+        """POSTing a Zone with two devices binds both, and the detail view returns them."""
+        url = reverse("plugins-api:nautobot_firewall_models-api:zone-list")
+        data = {
+            "name": "shared",
+            "status": Status.objects.get(name="Active").pk,
+            "devices": [str(dev.pk) for dev in self.devices],
+        }
+        response = self.client.post(url, data, format="json", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
+        zone = models.Zone.objects.get(name="shared")
+        self.assertEqual(set(zone.devices.all()), set(self.devices))
+
+        detail = reverse("plugins-api:nautobot_firewall_models-api:zone-detail", kwargs={"pk": zone.pk})
+        response = self.client.get(f"{detail}?exclude_m2m=false", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        self.assertEqual({dev["id"] for dev in response.data["devices"]}, {dev.pk for dev in self.devices})
+
+    def test_graphql_zone_devices(self):
+        """GraphQL lists each Zone's devices."""
+        zone = models.Zone.objects.create(name="shared", status=Status.objects.get(name="Active"))
+        zone.devices.set(self.devices)
+        query = 'query { zones(name: "shared") { devices { name } } }'
+        response = self.client.post(reverse("graphql-api"), {"query": query}, format="json", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        self.assertNotIn("errors", response.data)
+        names = sorted(dev["name"] for dev in response.data["data"]["zones"][0]["devices"])
+        self.assertEqual(names, ["DFW02-WAN00", "HOU02-WAN00"])

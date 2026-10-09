@@ -98,7 +98,11 @@ class UserObjectGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
 class ZoneFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     """Set `key_and_reverse_url_string` for Zone."""
 
-    key_and_reverse_url_string = {"vrfs": "ipam:vrf_list", "interfaces": "dcim:interface_list"}
+    key_and_reverse_url_string = {
+        "vrfs": "ipam:vrf_list",
+        "devices": "dcim:device_list",
+        "interfaces": "dcim:interface_list",
+    }
 
 
 address_object = ui.ObjectDetailContent(
@@ -374,7 +378,7 @@ zone = ui.ObjectDetailContent(
         ZoneFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            fields=["name", "description", "vrfs", "interfaces", "status"],
+            fields=["name", "description", "vrfs", "devices", "interfaces", "status"],
         ),
     ),
 )

@@ -8,6 +8,7 @@ This major release is the first INVITE Networks release of the app. Highlights:
 
 - Added Zone Groups. A Zone Group bundles one or more Zones and can be used anywhere a Zone can be used on Policy Rules and NAT Policy Rules.
 - Policy Rules and NAT Policy Rules can now reference multiple source and destination Zones. The single `source_zone` and `destination_zone` fields are replaced by `source_zones` and `destination_zones`, and existing assignments are migrated automatically. See the [upgrade guide](../upgrade.md) before upgrading.
+- Zones can be bound to multiple Devices. Existing Zones are bound to the Devices that own their Interfaces during the upgrade.
 - Rules expose `expanded_source_zones` and `expanded_destination_zones` in the REST API and GraphQL so deployment tooling receives Zone Groups already resolved into Zones.
 - Removed the Capirca integration.
 
@@ -23,6 +24,7 @@ This major release is the first INVITE Networks release of the app. Highlights:
 
 - Added the ZoneGroup model to group one or more Zones. Zone Groups can be used anywhere a Zone can be used on Policy Rules and NAT Policy Rules, and appear under the Zone menu.
 - Added read-only `expanded_source_zones` and `expanded_destination_zones` to the Policy Rule and NAT Policy Rule REST API and GraphQL types, returning each rule's Zones with every Zone Group expanded into its member Zones.
+- Added a `devices` many-to-many field on Zone so a Zone can be bound to multiple Devices, with a matching `devices` filter (name or ID). The migration binds each existing Zone to the Devices that own its assigned Interfaces, and deleting a Device bound to a Zone is blocked when `protect_on_delete` is enabled.
 
 ### Removed
 

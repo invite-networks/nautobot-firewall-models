@@ -144,12 +144,15 @@ class ZoneTestCase(FilterTestCases.FilterTestCase):
     generic_filter_tests = (
         ("zone_groups", "zone_groups__id"),
         ("zone_groups", "zone_groups__name"),
+        ("devices", "devices__id"),
+        ("devices", "devices__name"),
     )
 
     @classmethod
     def setUpTestData(cls):
         """Set up test data."""
         fixtures.create_zone_group()
+        fixtures.bind_zone_devices()
         # A zone outside every group, so each group filter matches a strict subset of zones.
         models.Zone.objects.create(name="Guest", status=Status.objects.get(name="Active"))
 

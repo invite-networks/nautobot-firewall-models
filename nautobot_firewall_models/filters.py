@@ -9,6 +9,7 @@ from nautobot.apps.filters import (
     SearchFilter,
     StatusModelFilterSetMixin,
 )
+from nautobot.dcim.models import Device
 
 from nautobot_firewall_models import models
 
@@ -158,6 +159,11 @@ class ZoneFilterSet(BaseFilterSet, NautobotFilterSet):
         field_name="zone_groups",
         queryset=models.ZoneGroup.objects.all(),
         label="Zone Groups (name or ID)",
+    )
+    devices = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="devices",
+        queryset=Device.objects.all(),
+        label="Devices (name or ID)",
     )
 
     class Meta:

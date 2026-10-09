@@ -414,6 +414,15 @@ def assign_policies():  # pylint: disable=too-many-locals
     NATPolicyDynamicGroupM2M.objects.get_or_create(nat_policy=nat_policy_3, dynamic_group=dynamic_group, weight=1000)
 
 
+def bind_zone_devices():
+    """Bind WAN to two firewalls and LAN to one, leaving DMZ unbound."""
+    assign_policies()
+    zone1, zone2, _ = create_zone()
+    zone1.devices.set(Device.objects.filter(name__in=["DFW02-WAN00", "HOU02-WAN00"]))
+    zone2.devices.set(Device.objects.filter(name="DFW02-WAN00"))
+    return zone1, zone2
+
+
 def create_sample_env():
     """Create a full set of sample objects with zones and IP-based address objects."""  # pylint: disable=too-many-locals, too-many-statements
     assign_policies()

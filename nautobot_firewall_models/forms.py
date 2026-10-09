@@ -484,6 +484,7 @@ class ZoneFilterForm(NautobotFilterForm):
     )
     name = forms.CharField(required=False, label="Name")
     vrfs = DynamicModelChoiceField(queryset=VRF.objects.all(), label="VRF")
+    devices = DynamicModelChoiceField(queryset=Device.objects.all(), label="Device")
     interfaces = DynamicModelChoiceField(queryset=Interface.objects.all(), label="Interface")
 
 
@@ -491,16 +492,16 @@ class ZoneForm(NautobotModelForm):
     """Zone creation/edit form."""
 
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
-    device = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
+    devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
     interfaces = DynamicModelMultipleChoiceField(
-        queryset=Interface.objects.all(), required=False, label="Interface", query_params={"device_id": "$device"}
+        queryset=Interface.objects.all(), required=False, label="Interface", query_params={"device_id": "$devices"}
     )
 
     class Meta:
         """Meta attributes."""
 
         model = models.Zone
-        fields = ["name", "description", "vrfs", "device", "interfaces", "status", "tags"]
+        fields = ["name", "description", "vrfs", "devices", "interfaces", "status", "tags"]
 
 
 class ZoneBulkEditForm(NautobotBulkEditForm):
@@ -509,12 +510,13 @@ class ZoneBulkEditForm(NautobotBulkEditForm):
     pk = DynamicModelMultipleChoiceField(queryset=models.Zone.objects.all(), widget=forms.MultipleHiddenInput)
     description = forms.CharField(required=False)
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
+    devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
     interfaces = DynamicModelMultipleChoiceField(queryset=Interface.objects.all(), required=False, label="Interface")
 
     class Meta:
         """Meta attributes."""
 
-        nullable_fields = ["description", "vrfs", "interfaces"]
+        nullable_fields = ["description", "vrfs", "devices", "interfaces"]
 
 
 class ZoneGroupFilterForm(NautobotFilterForm):

@@ -4,6 +4,7 @@
 # pylint: disable=invalid-name
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.ipam.models import VRF
 
@@ -73,6 +74,17 @@ class TestModels(TestCase):
         self.assertEqual(zone.name, "trust")
         self.assertEqual(zone.interfaces.count(), 0)
         self.assertEqual(zone.vrfs.first(), self.vrf)
+
+    def test_zone_bound_to_multiple_devices(self):
+        """A Zone can be bound to several Devices and each Device lists its Zones."""
+        wan, lan = fixtures.bind_zone_devices()
+        dfw = Device.objects.get(name="DFW02-WAN00")
+
+        self.assertEqual(
+            sorted(wan.devices.values_list("name", flat=True)),
+            ["DFW02-WAN00", "HOU02-WAN00"],
+        )
+        self.assertEqual(sorted(dfw.zones.values_list("name", flat=True)), sorted([wan.name, lan.name]))
 
     def test_address_object_too_many_objects(self):
         """Tests to make sure only one address can be on an address object."""
