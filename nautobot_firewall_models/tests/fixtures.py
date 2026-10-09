@@ -3,7 +3,7 @@
 # ruff: noqa: F403, F405
 from django.contrib.contenttypes.models import ContentType
 from nautobot.dcim.models import Device, DeviceType, Location, LocationType, Manufacturer, Platform
-from nautobot.extras.models import DynamicGroup, Job, Role
+from nautobot.extras.models import DynamicGroup, Role
 from nautobot.extras.models.statuses import Status
 from nautobot.ipam.models import VRF, Namespace, Prefix
 from nautobot.ipam.models import IPAddress as IPAddr
@@ -401,8 +401,8 @@ def assign_policies():  # pylint: disable=too-many-locals
     NATPolicyDynamicGroupM2M.objects.get_or_create(nat_policy=nat_policy_3, dynamic_group=dynamic_group, weight=1000)
 
 
-def create_capirca_env():
-    """Create objects that are Capirca Ready."""  # pylint: disable=too-many-locals, too-many-statements
+def create_sample_env():
+    """Create a full set of sample objects with zones and IP-based address objects."""  # pylint: disable=too-many-locals, too-many-statements
     assign_policies()
     namespace, _ = Namespace.objects.get_or_create(name="global")
     status = Status.objects.get(name="Active")
@@ -437,7 +437,3 @@ def create_capirca_env():
     addr_obj4.fqdn = None
     addr_obj4.prefix = prefix
     addr_obj4.validated_save()
-
-    job = Job.objects.get(name="Generate FW Config via Capirca.")
-    job.enabled = True
-    job.validated_save()

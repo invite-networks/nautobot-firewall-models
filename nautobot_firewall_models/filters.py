@@ -9,7 +9,6 @@ from nautobot.apps.filters import (
     SearchFilter,
     StatusModelFilterSetMixin,
 )
-from nautobot.dcim.models import Device
 
 from nautobot_firewall_models import models
 
@@ -215,23 +214,6 @@ class NATPolicyFilterSet(BaseFilterSet, NautobotFilterSet):
         """Meta attributes for filter."""
 
         model = models.NATPolicy
-        fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
-
-
-class CapircaPolicyFilterSet(NautobotFilterSet):
-    """Filter for CapircaPolicy."""
-
-    device = NaturalKeyOrPKMultipleChoiceFilter(
-        field_name="device",
-        queryset=Device.objects.all(),
-        to_field_name="name",
-        label="Schema (name or PK)",
-    )
-
-    class Meta:
-        """Meta attributes for filter."""
-
-        model = models.CapircaPolicy
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 

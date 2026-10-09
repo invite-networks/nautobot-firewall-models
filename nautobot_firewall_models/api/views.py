@@ -126,14 +126,6 @@ class NATPolicyViewSet(NautobotModelViewSet):
     filterset_class = filters.NATPolicyFilterSet
 
 
-class CapircaPolicyViewSet(ModelViewSet):
-    """CapircaPolicy viewset."""
-
-    queryset = models.CapircaPolicy.objects.all().prefetch_related("tags")
-    serializer_class = serializers.CapircaPolicySerializer
-    filterset_class = filters.CapircaPolicyFilterSet
-
-
 ###########################
 # Through Models
 ###########################

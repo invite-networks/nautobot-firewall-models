@@ -72,12 +72,7 @@ PLUGINS_CONFIG = {
     "nautobot_firewall_models": {
         "default_status": "Active",
         "allowed_status": ["Active"], # default shown, `[]` allows all
-        "capirca_remark_pass": True,
-        "capirca_os_map": {
-            "cisco_ios": "cisco",
-            "arista_eos": "arista",
-        },
-        # "custom_capirca": "my.custom.func", # provides ability to overide capirca logic
+        "protect_on_delete": True,
     }
 }
 ```

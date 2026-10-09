@@ -12,7 +12,6 @@ An app for [Nautobot](https://github.com/nautobot/nautobot) that is meant to mod
 - Layer 4 firewall policies
 - Extended access control lists
 - NAT policies
-- Generation of firewall configurations, via Capirca
 
 Future development will include the ability to onboard an existing access list from a device and the ability to generate device configuration.
 

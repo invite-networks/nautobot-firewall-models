@@ -13,14 +13,6 @@
                 "Active"
             ]
         },
-        "capirca_remark_pass": {
-            "type": "boolean",
-            "default": true
-        },
-        "capirca_os_map": {
-            "type": "object",
-            "default": {}
-        },
         "protect_on_delete": {
             "type": "boolean",
             "default": true

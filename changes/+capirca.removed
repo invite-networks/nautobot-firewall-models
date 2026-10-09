@@ -1,0 +1,1 @@
+Removed the Capirca integration, including the CapircaPolicy model, its API endpoint, UI views, the "Generate FW Config via Capirca" job, and the `capirca_remark_pass`, `capirca_os_map`, and `custom_capirca` settings.

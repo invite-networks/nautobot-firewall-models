@@ -7,7 +7,6 @@ from nautobot.apps import ui
 from nautobot.core.templatetags import helpers
 
 from nautobot_firewall_models import tables
-from nautobot_firewall_models.templatetags.fw_tags import render_truncate
 
 
 class BaseFieldsPanelMixin:
@@ -167,43 +166,6 @@ application_object_group = ui.ObjectDetailContent(
             table_filter="application_object_groups",
             related_field_name="application_object_groups",
             add_button_route=None,
-        ),
-    ),
-)
-
-capirca_policy = ui.ObjectDetailContent(
-    panels=(
-        ui.ObjectFieldsPanel(
-            section=ui.SectionChoices.LEFT_HALF,
-            weight=100,
-            fields="__all__",
-            value_transforms={
-                "pol": [render_truncate, helpers.pre_tag],
-                "net": [render_truncate, helpers.pre_tag],
-                "svc": [render_truncate, helpers.pre_tag],
-                "cfg": [render_truncate, helpers.pre_tag],
-            },
-        ),
-    ),
-    extra_tabs=(
-        ui.DistinctViewTab(
-            weight=ui.Tab.WEIGHT_CHANGELOG_TAB + 200,
-            tab_id="devicedetail",
-            label="Config Details",
-            url_name="plugins:nautobot_firewall_models:capircapolicy_devicedetail",
-            panels=(
-                ui.ObjectFieldsPanel(
-                    section=ui.SectionChoices.FULL_WIDTH,
-                    weight=100,
-                    fields=["pol", "net", "svc", "cfg"],
-                    value_transforms={
-                        "pol": [helpers.pre_tag],
-                        "net": [helpers.pre_tag],
-                        "svc": [helpers.pre_tag],
-                        "cfg": [helpers.pre_tag],
-                    },
-                ),
-            ),
         ),
     ),
 )

@@ -9,7 +9,6 @@ from nautobot.apps.forms import (
 )
 from nautobot.dcim.models import Device, Interface
 from nautobot.extras.forms import (
-    CustomFieldModelCSVForm,
     NautobotBulkEditForm,
     NautobotFilterForm,
     NautobotModelForm,
@@ -888,53 +887,3 @@ class NATPolicyBulkEditForm(NautobotBulkEditForm):
         nullable_fields = [
             "description",
         ]
-
-
-# CapircaPolicy
-
-
-class CapircaPolicyForm(NautobotModelForm):
-    """Filter Form for CapircaPolicy instances."""
-
-    device = DynamicModelChoiceField(queryset=Device.objects.all())
-
-    class Meta:
-        """Boilerplate form Meta data for compliance rule."""
-
-        model = models.CapircaPolicy
-        fields = (
-            "device",
-            "pol",
-            "net",
-            "svc",
-            "cfg",
-        )
-
-
-class CapircaPolicyFilterForm(NautobotFilterForm):
-    """Form for CapircaPolicy instances."""
-
-    model = models.CapircaPolicy
-
-    q = forms.CharField(required=False, label="Search")
-
-
-class CapircaPolicyBulkEditForm(NautobotBulkEditForm):
-    """BulkEdit form for CapircaPolicy instances."""
-
-    pk = forms.ModelMultipleChoiceField(queryset=models.CapircaPolicy.objects.all(), widget=forms.MultipleHiddenInput)
-
-    class Meta:
-        """Boilerplate form Meta data for CapircaPolicy."""
-
-        nullable_fields = []
-
-
-class CapircaPolicyCSVForm(CustomFieldModelCSVForm):
-    """CSV Form for CapircaPolicy instances."""
-
-    class Meta:
-        """Boilerplate form Meta data for CapircaPolicy."""
-
-        model = models.CapircaPolicy
-        fields = models.CapircaPolicy.csv_headers

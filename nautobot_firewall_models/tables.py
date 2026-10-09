@@ -333,18 +333,3 @@ class NATPolicyTable(StatusTableMixin, BaseTable):
             "assigned_dynamic_groups",
             "status",
         )
-
-
-class CapircaPolicyTable(BaseTable):
-    """Table for list view."""
-
-    pk = ToggleColumn()
-    device = tables.TemplateColumn(
-        template_code="""<a href="{% url 'plugins:nautobot_firewall_models:capircapolicy' pk=record.pk %}">{{ record.device }}</a> """
-    )
-
-    class Meta(BaseTable.Meta):
-        """Meta attributes."""
-
-        model = models.CapircaPolicy
-        fields = ("pk", "device")

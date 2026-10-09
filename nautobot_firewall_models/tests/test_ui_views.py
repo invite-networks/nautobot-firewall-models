@@ -5,7 +5,6 @@
 # pylint: disable=duplicate-code
 from django.urls import reverse
 from nautobot.apps.testing import ViewTestCases, post_data
-from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.users.models import ObjectPermission
 
@@ -547,17 +546,3 @@ class NATPolicyUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
 
         # Post succeeds
         self.assertHttpStatus(self.client.post(**post_request), 302)
-
-
-class CapircaPolicyUIViewTest(ViewTestCases.GetObjectViewTestCase, ViewTestCases.ListObjectsViewTestCase):
-    """Test the Policy viewsets."""
-
-    model = CapircaPolicy
-    allowed_number_of_tree_queries_per_view_type = {"retrieve": 1}
-
-    @classmethod
-    def setUpTestData(cls):
-        """Create test data."""
-        fixtures.create_capirca_env()
-        for device in Device.objects.all():
-            CapircaPolicy.objects.create(device=device)

@@ -20,8 +20,6 @@ class NautobotFirewallModelsConfig(NautobotAppConfig):
     base_url = "firewall"
     required_settings = []
     default_settings = {
-        "capirca_remark_pass": True,
-        "capirca_os_map": {},
         "allowed_status": ["Active"],
         "default_status": "Active",
         "protect_on_delete": True,

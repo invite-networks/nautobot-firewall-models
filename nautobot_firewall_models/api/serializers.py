@@ -191,16 +191,6 @@ class NATPolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         fields = "__all__"
 
 
-class CapircaPolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
-    """CapircaPolicy Serializer."""
-
-    class Meta:
-        """Meta attributes."""
-
-        model = models.CapircaPolicy
-        fields = "__all__"
-
-
 ###########################
 # Through Models
 ###########################

@@ -140,18 +140,6 @@ menu_items = (
                     ),
                 ],
             ),
-            NavMenuGroup(
-                name="Capirca",
-                weight=700,
-                items=[
-                    NavMenuItem(
-                        link="plugins:nautobot_firewall_models:capircapolicy_list",
-                        name="Capirca Policy Rules",
-                        weight=100,
-                        permissions=["nautobot_firewall_models.view_capircapolicy"],
-                    ),
-                ],
-            ),
         ],
     ),
 )
