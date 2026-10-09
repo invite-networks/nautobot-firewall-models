@@ -1,0 +1,13 @@
+nautobot-firewall-models
+Copyright (c) 2026 INVITE Networks
+
+This product is derived from Nautobot Firewall Models
+(https://github.com/nautobot/nautobot-app-firewall-models), version 3.0.1,
+commit e472068f381f0dab89b504d48dfd90152f4390d7.
+
+Original work Copyright (c) Network to Code, LLC.
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+INVITE Networks has modified the original work. Changes made after the
+upstream import are recorded in this repository's git history, beginning
+with the commit that follows "Import nautobot-app-firewall-models v3.0.1".

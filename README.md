@@ -1,15 +1,16 @@
 # Nautobot Firewall Models
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/nautobot/nautobot-app-firewall-models/develop/docs/images/icon-nautobot-firewall-models.png" class="logo" height="200px">
-  <br>
-  <a href="https://github.com/nautobot/nautobot-app-firewall-models/actions"><img src="https://github.com/nautobot/nautobot-app-firewall-models/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://docs.nautobot.com/projects/firewall-models/en/latest/"><img src="https://readthedocs.org/projects/nautobot-plugin-firewall-models/badge/"></a>
-  <a href="https://pypi.org/project/nautobot-firewall-models/"><img src="https://img.shields.io/pypi/v/nautobot-firewall-models"></a>
-  <a href="https://pypi.org/project/nautobot-firewall-models/"><img src="https://img.shields.io/pypi/dm/nautobot-firewall-models"></a>
+  <img src="docs/images/icon-nautobot-firewall-models.png" class="logo" height="200px">
   <br>
   An <a href="https://networktocode.com/nautobot-apps/">App</a> for <a href="https://nautobot.com/">Nautobot</a>.
 </p>
+
+## Origin and Attribution
+
+This repository is maintained by INVITE Networks and is derived from [Nautobot Firewall Models](https://github.com/nautobot/nautobot-app-firewall-models) v3.0.1 by Network to Code, LLC. The original work is licensed under the Apache License 2.0, and this repository is distributed under the same license. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
+
+This is an independent copy, not a fork that tracks upstream. Please report issues with this version to this repository rather than to the upstream project.
 
 ## Overview
 
@@ -19,9 +20,9 @@ A plugin for [Nautobot](https://github.com/nautobot/nautobot) that is meant to m
 
 More screenshots can be found in the [Using the App](https://docs.nautobot.com/projects/firewall-models/en/latest/user/app_use_cases/) page in the documentation. Here's a quick overview of some of the app's added functionality:
 
-![Navigation Menu](https://raw.githubusercontent.com/nautobot/nautobot-app-firewall-models/develop/docs/images/navmenu.png "Navigation Menu")
+![Navigation Menu](docs/images/navmenu.png "Navigation Menu")
 
-![Policy View](https://raw.githubusercontent.com/nautobot/nautobot-app-firewall-models/develop/docs/images/policy-dark.png "Policy View")
+![Policy View](docs/images/policy-dark.png "Policy View")
 
 ## Try it out!
 
@@ -41,7 +42,7 @@ Full documentation for this App can be found over on the [Nautobot Docs](https:/
 
 ### Contributing to the Documentation
 
-You can find all the Markdown source for the App documentation under the [`docs`](https://github.com/nautobot/nautobot-app-firewall-models/tree/develop/docs) folder in this repository. For simple edits, a Markdown capable editor is sufficient: clone the repository and edit away.
+You can find all the Markdown source for the App documentation under the [`docs`](docs) folder in this repository. For simple edits, a Markdown capable editor is sufficient: clone the repository and edit away.
 
 If you need to view the fully-generated documentation site, you can build it with [MkDocs](https://www.mkdocs.org/). A container hosting the documentation can be started using the `invoke` commands (details in the [Development Environment Guide](https://docs.nautobot.com/projects/firewall-models/en/latest/dev/dev_environment/#docker-development-environment)) on [http://localhost:8001](http://localhost:8001). Using this container, as your changes to the documentation are saved, they will be automatically rebuilt and any pages currently being viewed will be reloaded in your browser.
 
@@ -49,4 +50,4 @@ Any PRs with fixes or improvements are very welcome!
 
 ## Questions
 
-For any questions or comments, please check the [FAQ](https://docs.nautobot.com/projects/firewall-models/en/latest/user/faq/) first. Feel free to also swing by the [Network to Code Slack](https://networktocode.slack.com/) (channel `#nautobot`), sign up [here](http://slack.networktocode.com/) if you don't have an account.
+For questions or problems with this version, open an issue in [this repository](https://github.com/invite-networks/nautobot-firewall-models/issues). The upstream [FAQ](https://docs.nautobot.com/projects/firewall-models/en/latest/user/faq/) is also a useful reference.
