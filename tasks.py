@@ -15,12 +15,11 @@ limitations under the License.
 import os
 import re
 import shutil
-import sys
 from pathlib import Path
 from time import sleep
 
 from invoke.collection import Collection
-from invoke.exceptions import Exit, UnexpectedExit
+from invoke.exceptions import Exit
 from invoke.tasks import task as invoke_task
 
 
@@ -218,66 +217,18 @@ def _ensure_creds_env_file(context):
 @task
 def generate_packages(context):
     """Generate all Python packages inside docker and copy the file locally under dist/."""
-    command = "poetry build"
+    command = "uv build"
     run_command(context, command)
-
-
-def _get_docker_nautobot_version(context, nautobot_ver=None, python_ver=None):
-    """Extract Nautobot version from base docker image."""
-    if nautobot_ver is None:
-        nautobot_ver = context.nautobot_firewall_models.nautobot_ver
-    if python_ver is None:
-        python_ver = context.nautobot_firewall_models.python_ver
-    dockerfile_path = os.path.join(context.nautobot_firewall_models.compose_dir, "Dockerfile")
-    base_image = context.run(f"grep --max-count=1 '^FROM ' {dockerfile_path}", hide=True).stdout.strip().split(" ")[1]
-    base_image = base_image.replace(r"${NAUTOBOT_VER}", nautobot_ver).replace(r"${PYTHON_VER}", python_ver)
-    pip_nautobot_ver = context.run(f"docker run --rm --entrypoint '' {base_image} pip show nautobot", hide=True)
-    match_version = re.search(r"^Version: (.+)$", pip_nautobot_ver.stdout.strip(), flags=re.MULTILINE)
-    if match_version:
-        return match_version.group(1)
-    else:
-        raise Exit(f"Nautobot version not found in Docker base image {base_image}.")
 
 
 @task(
     help={
-        "check": (
-            "If enabled, check for outdated dependencies in the poetry.lock file, "
-            "instead of generating a new one. (default: disabled)"
-        ),
-        "constrain_nautobot_ver": (
-            "Run 'poetry add nautobot@[version] --lock' to generate the lockfile, "
-            "where [version] is the version installed in the Dockerfile's base image. "
-            "Generally intended to be used in CI and not for local development. (default: disabled)"
-        ),
-        "constrain_python_ver": (
-            "Target Python version to constrain resolution. Accepts X.Y or X.Y.Z. "
-            "Example: --constrain-python-ver=3.9.3 "
-            "This helps avoid poetry complaints about Python incompatibilities. "
-            "Generally intended to be used in CI and not for local development. (default: disabled)"
-        ),
+        "check": "If enabled, verify uv.lock is up to date instead of generating a new one. (default: disabled)",
     }
 )
-def lock(context, check=False, constrain_nautobot_ver=False, constrain_python_ver=""):
-    """Generate poetry.lock; optionally constrain Nautobot and/or Python (with patch)."""
-    if constrain_nautobot_ver:
-        docker_nautobot_version = _get_docker_nautobot_version(context)
-        command = f"poetry add --lock nautobot@{docker_nautobot_version}"
-        if constrain_python_ver:
-            command += f" --python {constrain_python_ver}"
-        try:
-            output = run_command(context, command, hide=True)
-            print(output.stdout, end="")
-            print(output.stderr, file=sys.stderr, end="")
-        except UnexpectedExit:
-            print("Unable to add Nautobot dependency with version constraint, falling back to git branch.")
-            command = f"poetry add --lock git+https://github.com/nautobot/nautobot.git#{context.nautobot_firewall_models.nautobot_ver}"
-            if constrain_python_ver:
-                command += f" --python {constrain_python_ver}"
-            run_command(context, command)
-    else:
-        command = f"poetry {'check' if check else 'lock'}"
-        run_command(context, command)
+def lock(context, check=False):
+    """Generate uv.lock, or check that it is up to date."""
+    context.run(f"uv lock{' --check' if check else ''}")
 
 
 # ------------------------------------------------------------------------------
@@ -721,7 +672,7 @@ def build_and_check_docs(context):
     run_command(context, command)
 
     # Check for the existence of a release notes file for the current version if it's not a prerelease.
-    version = context.run("poetry version --short", hide=True)
+    version = context.run("uv version --short", hide=True)
     match = re.match(r"^(\d+)\.(\d+)\.\d+$", version.stdout.strip())
     if match:
         major = match.group(1)
@@ -753,16 +704,16 @@ def help_task(context):
 )
 def generate_release_notes(context, version="", date="", keep=False):
     """Generate Release Notes using Towncrier."""
-    command = "poetry run towncrier build"
+    command = "uv run towncrier build"
     if not version:
-        version = context.run("poetry version --short", hide=True).stdout.strip()
+        version = context.run("uv version --short", hide=True).stdout.strip()
     command += f" --version {version}"
     if date:
         command += f" --date {date}"
     command += " --keep" if keep else " --yes"
 
     version_major_minor = ".".join(version.split(".")[:2])
-    context.run(f"poetry run python development/bin/ensure_release_notes.py --version {version_major_minor}")
+    context.run(f"uv run python development/bin/ensure_release_notes.py --version {version_major_minor}")
 
     # Due to issues with git repo ownership in the containers, this must always run locally.
     context.run(command)
@@ -1011,7 +962,7 @@ def tests(context, failfast=False, keepdb=False, lint_only=False):
     yamllint(context)
     print("Running markdownlint...")
     markdownlint(context)
-    print("Running poetry check...")
+    print("Running uv lock check...")
     lock(context, check=True)
     print("Running migrations check...")
     check_migrations(context)

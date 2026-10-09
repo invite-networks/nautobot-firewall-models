@@ -5,7 +5,7 @@
 The development environment can be used in two ways:
 
 1. **(Recommended)** All services, including Nautobot, are spun up using Docker containers and a volume mount so you can develop locally.
-2. With a local Poetry environment if you wish to develop outside of Docker, with the caveat of using external services provided by Docker for the database (PostgreSQL by default, MySQL optionally) and Redis services.
+2. With a local uv environment if you wish to develop outside of Docker, with the caveat of using external services provided by Docker for the database (PostgreSQL by default, MySQL optionally) and Redis services.
 
 This is a quick reference guide if you're already familiar with the development environment provided, which you can read more about later in this document.
 
@@ -27,20 +27,18 @@ Using **Invoke** these configuration options can be overridden using [several me
 !!! tip
     This is the recommended option for development.
 
-This project is managed by [Python Poetry](https://python-poetry.org/) and has a few requirements to setup your development environment:
+This project is managed by [uv](https://docs.astral.sh/uv/) and has a few requirements to setup your development environment:
 
-1. Install Poetry, see the [Poetry documentation](https://python-poetry.org/docs/#installation) for your operating system.
+1. Install uv, see the [uv documentation](https://docs.astral.sh/uv/getting-started/installation/) for your operating system.
 2. Install Docker, see the [Docker documentation](https://docs.docker.com/get-docker/) for your operating system.
 3. Install Docker-compose, see the [Docker-compose documentation](https://github.com/docker/compose) for your operation system.
 
-Once you have Poetry and Docker installed you can run the following commands (in the root of the repository) to install all other development dependencies in an isolated Python virtual environment:
+Once you have uv and Docker installed you can run the following commands (in the root of the repository) to install all other development dependencies in an isolated Python virtual environment:
 
 ```shell
-poetry self add poetry-plugin-shell
-poetry shell
-poetry install
-invoke build
-invoke start
+uv sync
+uv run invoke build
+uv run invoke start
 ```
 
 The Nautobot server can now be accessed at [http://localhost:8080](http://localhost:8080) and the live documentation at [http://localhost:8001](http://localhost:8001).
@@ -50,7 +48,7 @@ To either stop or destroy the development environment use the following options.
 - **invoke stop** - Stop the containers, but keep all underlying systems intact
 - **invoke destroy** - Stop and remove all containers, volumes, etc. (This results in data loss due to the volume being deleted)
 
-### Local Poetry Development Environment
+### Local uv Development Environment
 
 - Create an `invoke.yml` file with the following contents at the root of the repo and edit as necessary
 
@@ -63,9 +61,8 @@ nautobot_firewall_models:
 Run the following commands:
 
 ```shell
-poetry self add poetry-plugin-shell
-poetry shell
-poetry install --extras nautobot
+uv sync
+source .venv/bin/activate
 export $(cat development/development.env | xargs)
 export $(cat development/creds.env | xargs)
 invoke start && sleep 5
@@ -73,7 +70,7 @@ nautobot-server migrate
 ```
 
 !!! note
-    If you want to develop on the latest develop branch of Nautobot, run the following command: `poetry add --optional git+https://github.com/nautobot/nautobot@develop`. After the `@` symbol must match either a branch or a tag.
+    If you want to develop on the latest develop branch of Nautobot, run the following command: `uv add git+https://github.com/nautobot/nautobot@develop`. After the `@` symbol must match either a branch or a tag.
 
 You can now run `nautobot-server` commands as you would from the [Nautobot documentation](https://docs.nautobot.com/projects/core/en/stable/user-guide/administration/tools/nautobot-server/) for example to start the development server:
 
@@ -142,20 +139,19 @@ The upside to having the Nautobot service handled by Docker rather than locally 
 
 Follow the directions below for the specific development environment that you choose.
 
-## Poetry
+## uv
 
-Poetry is used in lieu of the "virtualenv" commands and is leveraged in both environments. The virtual environment will provide all of the Python packages required to manage the development environment such as **Invoke**. See the [Local Development Environment](#local-poetry-development-environment) section to see how to install Nautobot if you're going to be developing locally (i.e. not using the Docker container).
+uv manages the virtual environment and is leveraged in both environments. The virtual environment will provide all of the Python packages required to manage the development environment such as **Invoke**. See the [Local Development Environment](#local-uv-development-environment) section to see how to install Nautobot if you're going to be developing locally (i.e. not using the Docker container).
 
 The `pyproject.toml` file outlines all of the relevant dependencies for the project:
 
-- `tool.poetry.dependencies` - the main list of dependencies.
-- `tool.poetry.group.dev.dependencies` - development dependencies, to facilitate linting, testing, and documentation building.
+- `project.dependencies` - the main list of dependencies.
+- `dependency-groups.dev` - development dependencies, to facilitate linting and testing.
+- `dependency-groups.docs` - documentation build dependencies.
 
-The `poetry shell` command is used to create and enable a virtual environment managed by Poetry, so all commands ran going forward are executed within the virtual environment. This is similar to running the `source venv/bin/activate` command with virtualenvs. To install project dependencies in the virtual environment, you should run `poetry install` - this will install **both** project and development dependencies.
+Run `uv sync` to create the `.venv` virtual environment and install the project with **both** dependency groups. Prefix commands with `uv run` (for example `uv run invoke start`), or activate the environment with `source .venv/bin/activate`.
 
-For more details about Poetry and its commands please check out its [online documentation](https://python-poetry.org/docs/).
-
-In Poetry version 2, the shell command was moved out of the main Poetry project and into a plugin. For more details about the Poetry shell plugin, refer to its [GitHub repository](https://github.com/python-poetry/poetry-plugin-shell).
+For more details about uv and its commands please check out its [online documentation](https://docs.astral.sh/uv/).
 
 ## Full Docker Development Environment
 
@@ -347,7 +343,7 @@ Once completed, the new/updated environment variables should now be live.
 If you want your app to leverage another available Nautobot app or another Python package, you can easily add them into your Docker environment.
 
 ```bash
-➜ poetry add <package_name>
+➜ uv add <package_name>
 ```
 
 Once the dependencies are resolved, stop the existing containers, rebuild the Docker image, and then start all containers again.
@@ -363,10 +359,10 @@ Once the dependencies are resolved, stop the existing containers, rebuild the Do
 Let's say for example you want the new app you're creating to integrate into Slack. To do this, you will want to integrate into the existing Nautobot ChatOps App.
 
 ```bash
-➜ poetry add nautobot-chatops
+➜ uv add nautobot-chatops
 ```
 
-Once you activate the virtual environment via Poetry, you then tell Poetry to install the new app.
+This adds the app to `pyproject.toml` and `uv.lock` and installs it in your local virtual environment.
 
 Before you continue, you'll need to update the file `development/nautobot_config.py` accordingly with the name of the new app under `PLUGINS` and any relevant settings as necessary for the app under `PLUGINS_CONFIG`. Since you're modifying the underlying OS (not just Django files), you need to rebuild the image. This is a similar process to updating environment variables, which was explained earlier.
 
