@@ -1,0 +1,48 @@
+{% block content %}
+<div class="card">
+    <div class="card-header"><strong>Security Policies via Dynamic Groups</strong></div>
+    {% if not dynamic_groups %}
+    <div class="card-body">
+        <span class="text-secondary">None</span>
+    </div>
+    {% else %}
+    <table class="table table-hover card-body">
+        <tr>
+            <th>Policy</th>
+            <th>Weight</th>
+            <th>Type</th>
+        </tr>
+        <tbody>
+            {% for group in dynamic_groups %}
+                {% for m2m in group.policydynamicgroupm2m_set.all %}
+                    <tr>
+                        <td>
+                            <a href="{{ m2m.policy.get_absolute_url }}">{{ m2m.policy }}</a> via <a href="{{ m2m.dynamic_group.get_absolute_url }}">{{ m2m.dynamic_group }}</a>
+                        </td>
+                        <td>
+                            {{ m2m.weight }}
+                        </td>
+                        <td>
+                            Firewall
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% for m2m in group.natpolicydynamicgroupm2m_set.all %}
+                    <tr>
+                        <td>
+                            <a href="{{ m2m.policy.get_absolute_url }}">{{ m2m.nat_policy }}</a> via <a href="{{ m2m.dynamic_group.get_absolute_url }}">{{ m2m.dynamic_group }}</a>
+                        </td>
+                        <td>
+                            {{ m2m.weight }}
+                        </td>
+                        <td>
+                            NAT
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock content %}

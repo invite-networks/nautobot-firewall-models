@@ -1,0 +1,163 @@
+---
+dev_addr: "127.0.0.1:8001"
+edit_uri: "edit/main/docs"
+site_dir: "nautobot_firewall_models/static/nautobot_firewall_models/docs"
+site_name: "Nautobot Firewall Models Documentation"
+site_url: "https://docs.nautobot.com/projects/firewall-models/en/latest/"
+repo_url: "https://github.com/nautobot/nautobot-app-firewall-models"
+copyright: "Copyright &copy; The Authors"
+theme:
+  name: "material"
+  navigation_depth: 4
+  custom_dir: "docs/assets/overrides"
+  hljs_languages:
+    - "django"
+    - "yaml"
+  features:
+    - "content.action.edit"
+    - "content.action.view"
+    - "content.code.copy"
+    - "navigation.footer"
+    - "navigation.indexes"
+    - "navigation.tabs"
+    - "navigation.tabs.sticky"
+    - "navigation.tracking"
+    - "search.highlight"
+    - "search.share"
+    - "search.suggest"
+  favicon: "assets/favicon.ico"
+  logo: "assets/nautobot_logo.svg"
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: "default"
+      primary: "black"
+      toggle:
+        icon: "material/weather-sunny"
+        name: "Switch to dark mode"
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: "slate"
+      primary: "black"
+      toggle:
+        icon: "material/weather-night"
+        name: "Switch to light mode"
+extra_css:
+  - "assets/extra.css"
+
+extra:
+  generator: false
+  ntc_sponsor: true
+  social:
+    - icon: "fontawesome/solid/rss"
+      link: "https://blog.networktocode.com/blog/tags/nautobot"
+      name: "Network to Code Blog"
+    - icon: "fontawesome/brands/youtube"
+      link: "https://www.youtube.com/playlist?list=PLjA0bhxgryJ2Ts4GJMDA-tPzVWEncv4pb"
+      name: "Nautobot Videos"
+    - icon: "fontawesome/brands/slack"
+      link: "https://www.networktocode.com/community/"
+      name: "Network to Code Community"
+    - icon: "fontawesome/brands/github"
+      link: "https://github.com/nautobot/nautobot"
+      name: "GitHub Repo"
+    - icon: "fontawesome/brands/twitter"
+      link: "https://twitter.com/networktocode"
+      name: "Network to Code Twitter"
+markdown_extensions:
+  - "markdown_version_annotations":
+      admonition_tag: "???"
+  - "admonition"
+  - "toc":
+      permalink: true
+  - "attr_list"
+  - "md_in_html"
+  - "pymdownx.details"
+  - "pymdownx.highlight":
+      anchor_linenums: true
+  - "pymdownx.inlinehilite"
+  - "pymdownx.snippets"
+  - "pymdownx.superfences":
+      custom_fences:
+        - name: "mermaid"
+          class: "mermaid"
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - "footnotes"
+  - "meta"
+plugins:
+  - "search"
+  - "glightbox"
+  - "mkdocstrings":
+      default_handler: "python"
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            show_root_heading: true
+watch:
+  - "README.md"
+
+validation:
+  omitted_files: "warn"
+  absolute_links: "warn"
+  unrecognized_links: "warn"
+  anchors: "warn"
+
+nav:
+  - Overview: "index.md"
+  - User Guide:
+      - App Overview: "user/app_overview.md"
+      - Getting Started: "user/app_getting_started.md"
+      - Using the App: "user/app_use_cases.md"
+      - Capirca Integration: "user/capirca.md"
+      - Frequently Asked Questions: "user/faq.md"
+      - External Interactions: "user/external_interactions.md"
+      - Data Models:
+          - Address Object: "dev/models/addressobject.md"
+          - Address Object Group: "dev/models/addressobjectgroup.md"
+          - Application Object: "dev/models/applicationobject.md"
+          - Application Object Group: "dev/models/applicationobjectgroup.md"
+          - FQDN: "dev/models/fqdn.md"
+          - IP Range: "dev/models/iprange.md"
+          - NAT Policy: "dev/models/natpolicy.md"
+          - NAT Policy Device M2M: "dev/models/natpolicydevicem2m.md"
+          - NAT Policy Dynamic Group M2M: "dev/models/natpolicydynamicgroupm2m.md"
+          - NAT Policy Rule: "dev/models/natpolicyrule.md"
+          - Policy: "dev/models/policy.md"
+          - Policy Device M2M: "dev/models/policydevicem2m.md"
+          - Policy Dynamic Group M2M: "dev/models/policydynamicgroupm2m.md"
+          - Policy Rule: "dev/models/policyrule.md"
+          - Service Object: "dev/models/serviceobject.md"
+          - Service Object Group: "dev/models/serviceobjectgroup.md"
+          - User Object: "dev/models/userobject.md"
+          - User Object Group: "dev/models/userobjectgroup.md"
+          - Zone: "dev/models/zone.md"
+  - Administrator Guide:
+      - Install and Configure: "admin/install.md"
+      - Upgrade: "admin/upgrade.md"
+      - Uninstall: "admin/uninstall.md"
+      - Compatibility Matrix: "admin/compatibility_matrix.md"
+      - Release Notes:
+          - "admin/release_notes/index.md"
+          - v3.0: "admin/release_notes/version_3.0.md"
+          - v2.3: "admin/release_notes/version_2.3.md"
+          - v2.2: "admin/release_notes/version_2.2.md"
+          - v2.1: "admin/release_notes/version_2.1.md"
+          - v2.0: "admin/release_notes/version_2.0.md"
+          - v1.2: "admin/release_notes/version_1.2.md"
+          - v1.1: "admin/release_notes/version_1.1.md"
+          - v1.0: "admin/release_notes/version_1.0.md"
+          - v0.1: "admin/release_notes/version_0.1.md"
+  - Developer Guide:
+      - Extending the App: "dev/extending.md"
+      - Contributing to the App: "dev/contributing.md"
+      - Development Environment: "dev/dev_environment.md"
+      - Release Checklist: "dev/release_checklist.md"
+      # - Architecture Decision Records: "dev/arch_decision.md"
+      - Code Reference:
+          - "dev/code_reference/index.md"
+          - Package: "dev/code_reference/package.md"
+          - API: "dev/code_reference/api.md"
+          - Firewall Models Reference: "dev/models.md"
+  - Nautobot Docs Home ↗︎: "https://docs.nautobot.com"

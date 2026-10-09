@@ -1,0 +1,51 @@
+{% block content %}
+<div class="card">
+    <div class="card-header"><strong>Security Policies</strong></div>
+    {% if not policies %}
+    <div class="card-body">
+        <span class="text-secondary">None</span>
+    </div>
+    {% else %}
+    <table class="table table-hover card-body">
+        <tr>
+            <th>Policy</th>
+            <th>Weight</th>
+            <th>Type</th>
+        </tr>
+        <tbody>
+            {% for m2m in policies %}
+                <tr>
+                    <td>
+                        <a href="{{ m2m.policy.get_absolute_url }}">{{ m2m.policy }}</a>
+                    </td>
+                    <td>
+                        {{ m2m.weight }}
+                    </td>
+                    <td>
+                        Firewall
+                    </td>
+                </tr>
+            {% endfor %}
+            {% for m2m in nat_policies %}
+                <tr>
+                    <td>
+                        <a href="{{ m2m.policy.get_absolute_url }}">{{ m2m.nat_policy }}</a>
+                    </td>
+                    <td>
+                        {{ m2m.weight }}
+                    </td>
+                    <td>
+                        NAT
+                    </td>
+                </tr>
+            {% endfor %}
+            {% if policies|length == 0 and nat_policies|length == 0 %}
+                <div class="card-body">
+                    <span class="text-secondary">None</span>
+                </div>
+            {% endif %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock content %}
