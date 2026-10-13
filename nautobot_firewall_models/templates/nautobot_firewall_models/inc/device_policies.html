@@ -42,5 +42,8 @@
         </tbody>
     </table>
     {% endif %}
+    <div class="card-footer">
+        <a href="{% url 'plugins:nautobot_firewall_models:policyrule_list' %}?device={{ object.pk }}">View this device's Policy Rules in firewall order</a>
+    </div>
 </div>
 {% endblock content %}

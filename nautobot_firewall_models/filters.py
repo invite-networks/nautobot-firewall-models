@@ -2,6 +2,7 @@
 
 import django_filters
 from django.contrib.contenttypes.fields import GenericRelation
+from django.db.models import Q
 from nautobot.apps.filters import (
     MultiValueCharFilter,
     NaturalKeyOrPKMultipleChoiceFilter,
@@ -183,6 +184,23 @@ class ZoneGroupFilterSet(BaseFilterSet, NautobotFilterSet):
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 
+class PolicyBandFilterSet(NautobotFilterSet):
+    """Filter for PolicyBand."""
+
+    q = SearchFilter(
+        filter_predicates={
+            "name": "icontains",
+            "description": "icontains",
+        }
+    )
+
+    class Meta:
+        """Meta attributes for filter."""
+
+        model = models.PolicyBand
+        fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
+
+
 class PolicyRuleFilterSet(BaseFilterSet, NautobotFilterSet):
     """Filter for PolicyRule."""
 
@@ -193,6 +211,26 @@ class PolicyRuleFilterSet(BaseFilterSet, NautobotFilterSet):
             "request_id": "icontains",
         }
     )
+    band = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="band",
+        queryset=models.PolicyBand.objects.all(),
+        label="Policy Bands (name or ID)",
+    )
+    device = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=Device.objects.all(),
+        method="filter_device",
+        label="Devices (name or ID), through Policies assigned directly or by Dynamic Group",
+    )
+
+    def filter_device(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Return the rules of every Policy assigned to the Devices, directly or through a Dynamic Group."""
+        if not value:
+            return queryset
+        assigned = Q()
+        for device in value:
+            assigned |= Q(policies__assigned_devices=device)
+            assigned |= Q(policies__assigned_dynamic_groups__in=device.dynamic_groups)
+        return queryset.filter(pk__in=models.PolicyRule.objects.filter(assigned).values("pk"))
 
     class Meta:
         """Meta attributes for filter."""

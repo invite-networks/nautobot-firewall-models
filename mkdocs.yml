@@ -124,6 +124,7 @@ nav:
           - NAT Policy Dynamic Group M2M: "dev/models/natpolicydynamicgroupm2m.md"
           - NAT Policy Rule: "dev/models/natpolicyrule.md"
           - Policy: "dev/models/policy.md"
+          - Policy Band: "dev/models/policyband.md"
           - Policy Device M2M: "dev/models/policydevicem2m.md"
           - Policy Dynamic Group M2M: "dev/models/policydynamicgroupm2m.md"
           - Policy Rule: "dev/models/policyrule.md"
@@ -139,6 +140,7 @@ nav:
       - Compatibility Matrix: "admin/compatibility_matrix.md"
       - Release Notes:
           - "admin/release_notes/index.md"
+          - v4.1: "admin/release_notes/version_4.1.md"
           - v4.0: "admin/release_notes/version_4.0.md"
           - v3.0: "admin/release_notes/version_3.0.md"
           - v2.3: "admin/release_notes/version_2.3.md"

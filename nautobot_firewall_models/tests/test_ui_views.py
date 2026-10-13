@@ -290,6 +290,28 @@ class ZoneGroupUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         )
 
 
+class PolicyBandUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
+    """Test the PolicyBand viewsets."""
+
+    model = PolicyBand
+    bulk_edit_data = {"description": "bulk test update description"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data for UI calls."""
+        fixtures.create_policy_band()
+        PolicyBand.objects.create(name="deleteableobj1", index=101)
+        PolicyBand.objects.create(name="deleteableobj2", index=102)
+        PolicyBand.objects.create(name="deleteableobj3", index=103)
+        cls.form_data = {"name": "No Trust", "index": 15}
+        cls.csv_data = (
+            "name,index",
+            "csvobj1,201",
+            "csvobj2,202",
+            "csvobj3,203",
+        )
+
+
 class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     """Test the PolicyRule viewsets."""
 
@@ -300,16 +322,19 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     def setUpTestData(cls):
         """Create test data for API calls."""
         fixtures.create_policy_rule()
+        band = PolicyBand.objects.first()
         src_usr = UserObject.objects.first()
         src_addr = AddressObject.objects.first()
         dest_addr = AddressObject.objects.last()
         status = Status.objects.get(name="Active").id
         svc = ServiceObject.objects.first()
-        PolicyRule.objects.create(name="deleteableobj1", action="deny", index=1)
-        PolicyRule.objects.create(name="deleteableobj2", action="deny", index=1)
-        PolicyRule.objects.create(name="deleteableobj3", action="deny", index=1)
+        PolicyRule.objects.create(band=band, position="header", name="deleteableobj1", action="deny", index=1)
+        PolicyRule.objects.create(band=band, position="header", name="deleteableobj2", action="deny", index=1)
+        PolicyRule.objects.create(band=band, position="header", name="deleteableobj3", action="deny", index=1)
         cls.form_data = {
             # pylint: disable=R0801
+            "band": band.id,
+            "position": "header",
             "source_users": [src_usr.id],
             "source_addresses": [src_addr.id],
             "destination_addresses": [dest_addr.id],
@@ -320,10 +345,10 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
             "status": status,
         }
         cls.csv_data = (
-            "name,action,index,status",
-            "csvobj1,deny,1,Active",
-            "csvobj2,deny,2,Active",
-            "csvobj3,deny,3,Active",
+            "name,action,band,position,index,status",
+            "csvobj1,deny,Global Deny,header,1,Active",
+            "csvobj2,deny,Global Deny,header,2,Active",
+            "csvobj3,deny,Global Deny,closer,3,Active",
         )
 
 

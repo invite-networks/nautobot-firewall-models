@@ -102,10 +102,18 @@ class ZoneGroupViewSet(NautobotModelViewSet):
     filterset_class = filters.ZoneGroupFilterSet
 
 
+class PolicyBandViewSet(NautobotModelViewSet):
+    """PolicyBand viewset."""
+
+    queryset = models.PolicyBand.objects.all().prefetch_related("tags")
+    serializer_class = serializers.PolicyBandSerializer
+    filterset_class = filters.PolicyBandFilterSet
+
+
 class PolicyRuleViewSet(NautobotModelViewSet):
     """PolicyRule viewset."""
 
-    queryset = models.PolicyRule.objects.all().prefetch_related("tags")
+    queryset = models.PolicyRule.objects.all().select_related("band").prefetch_related("tags")
     serializer_class = serializers.PolicyRuleSerializer
     filterset_class = filters.PolicyRuleFilterSet
 

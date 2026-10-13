@@ -3,6 +3,7 @@
 # ruff: noqa: F403, F405
 # pylint: disable=invalid-name
 from django.core.exceptions import ValidationError
+from django.db.models import ProtectedError
 from django.test import TestCase
 from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
@@ -358,6 +359,7 @@ class TestZoneGroupModels(TestCase):
         self.wan = Zone.objects.get(name="WAN")
         self.lan = Zone.objects.get(name="LAN")
         self.dmz = Zone.objects.get(name="DMZ")
+        self.band, _, _ = fixtures.create_policy_band()
 
     def test_create_zone_group_only_required(self):
         """Create ZoneGroup with only required fields, and validate null description and __str__."""
@@ -373,14 +375,14 @@ class TestZoneGroupModels(TestCase):
 
     def test_policy_rule_expanded_zones_without_zones(self):
         """A rule with no zones or zone groups expands to nothing (implicit any)."""
-        rule = PolicyRule.objects.create(name="no zones", action="allow")
+        rule = PolicyRule.objects.create(name="no zones", action="allow", band=self.band, position="header")
 
         self.assertEqual(list(rule.expanded_source_zones()), [])
         self.assertEqual(list(rule.expanded_destination_zones()), [])
 
     def test_policy_rule_expanded_zones(self):
         """Zones set directly and zones reached through groups are combined without duplicates."""
-        rule = PolicyRule.objects.create(name="zone groups", action="allow")
+        rule = PolicyRule.objects.create(name="zone groups", action="allow", band=self.band, position="header")
         rule.source_zones.set([self.wan])
         rule.source_zone_groups.set([self.outside, self.inside])
         rule.destination_zone_groups.set([self.inside, self.everything])
@@ -390,7 +392,7 @@ class TestZoneGroupModels(TestCase):
 
     def test_policy_rule_expanded_zones_reflects_group_changes(self):
         """Expansion is evaluated on demand, so later group membership changes are picked up."""
-        rule = PolicyRule.objects.create(name="late change", action="allow")
+        rule = PolicyRule.objects.create(name="late change", action="allow", band=self.band, position="header")
         rule.source_zone_groups.set([self.outside])
         self.assertEqual(list(rule.expanded_source_zones()), [self.wan])
 
@@ -408,7 +410,7 @@ class TestZoneGroupModels(TestCase):
 
     def test_rule_details_include_zone_groups(self):
         """rule_details exposes both the zones and the zone groups on each side."""
-        rule = PolicyRule.objects.create(name="details", action="allow")
+        rule = PolicyRule.objects.create(name="details", action="allow", band=self.band, position="header")
         rule.source_zone_groups.set([self.inside])
         details = rule.rule_details()
 
@@ -418,7 +420,7 @@ class TestZoneGroupModels(TestCase):
 
     def test_zone_group_delete_protected_when_used_by_rule(self):
         """A ZoneGroup assigned to a rule can not be deleted while protect_on_delete is enabled."""
-        rule = PolicyRule.objects.create(name="protected", action="allow")
+        rule = PolicyRule.objects.create(name="protected", action="allow", band=self.band, position="header")
         rule.destination_zone_groups.set([self.outside])
 
         with self.assertRaises(ValidationError):
@@ -428,3 +430,67 @@ class TestZoneGroupModels(TestCase):
         """A Zone that belongs to a ZoneGroup can not be deleted while protect_on_delete is enabled."""
         with self.assertRaises(ValidationError):
             self.dmz.delete()
+
+
+class TestPolicyBandModels(TestCase):
+    """Test the PolicyBand model and how it orders Policy Rules."""
+
+    def setUp(self) -> None:
+        """Create the data."""
+        self.global_deny, self.universal, self.medium_trust = fixtures.create_policy_band()
+
+    def _rule(self, name, band, position, index=None):
+        return PolicyRule.objects.create(name=name, action="allow", band=band, position=position, index=index)
+
+    def test_create_policy_band_only_required(self):
+        """Create PolicyBand with only required fields, and validate null description and __str__."""
+        band = PolicyBand.objects.create(name="Exceptions", index=5)
+
+        self.assertEqual(band.description, "")
+        self.assertEqual(str(band), "Exceptions")
+
+    def test_bands_ordered_by_index(self):
+        """Bands sort by index, not name."""
+        self.assertEqual(list(PolicyBand.objects.all()), [self.global_deny, self.universal, self.medium_trust])
+
+    def test_rules_ordered_by_band_before_rule_index(self):
+        """A rule in an earlier band comes first even with a higher rule index."""
+        late = self._rule("late", self.medium_trust, "header", index=1)
+        early = self._rule("early", self.global_deny, "header", index=99)
+
+        self.assertEqual(list(PolicyRule.objects.all()), [early, late])
+
+    def test_header_rules_come_before_closer_rules(self):
+        """Within a band, every Header rule comes before every Closer rule regardless of index."""
+        closer = self._rule("closer", self.universal, "closer", index=1)
+        header = self._rule("header", self.universal, "header", index=50)
+
+        self.assertEqual(list(PolicyRule.objects.all()), [header, closer])
+
+    def test_rules_without_index_come_last_within_position(self):
+        """Rules with no index sort after indexed rules in the same band and position."""
+        unindexed = self._rule("a unindexed", self.universal, "header")
+        indexed = self._rule("z indexed", self.universal, "header", index=10)
+
+        self.assertEqual(list(PolicyRule.objects.all()), [indexed, unindexed])
+
+    def test_rules_sharing_an_index_are_ordered_by_name(self):
+        """Rules may share an index, and break the tie by name so the order is stable."""
+        second = self._rule("Block B", self.global_deny, "header", index=10)
+        first = self._rule("Block A", self.global_deny, "header", index=10)
+
+        self.assertEqual(list(PolicyRule.objects.all()), [first, second])
+
+    def test_band_with_rules_can_not_be_deleted(self):
+        """A PolicyBand that still has rules is protected from deletion."""
+        self._rule("protected", self.universal, "header")
+
+        with self.assertRaises(ProtectedError):
+            self.universal.delete()
+
+    def test_rule_details_include_band_and_position(self):
+        """rule_details exposes the rule's band and position."""
+        details = self._rule("details", self.universal, "closer").rule_details()
+
+        self.assertEqual(details["band"], self.universal)
+        self.assertEqual(details["position"], "closer")

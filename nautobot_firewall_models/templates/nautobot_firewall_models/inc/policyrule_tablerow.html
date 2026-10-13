@@ -1,6 +1,7 @@
 {% load helpers %}
 <tr>
-    <td>{{ rule.index }}</td>
+    <td>{{ rule.band }} / {{ rule.get_position_display }}</td>
+    <td>{{ rule.index|placeholder }}</td>
     {% if rule.action == "remark" %}
         <td colspan="8" style="text-align: center;"><strong>{{ rule }}</strong></td>
     {% else %}

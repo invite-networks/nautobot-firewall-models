@@ -14,6 +14,7 @@ from .nat_policy import (
 )
 from .security_policy import (
     Policy,
+    PolicyBand,
     PolicyDeviceM2M,
     PolicyDynamicGroupM2M,
     PolicyRule,
@@ -39,6 +40,7 @@ __all__ = (
     "NATPolicyDynamicGroupM2M",
     "NATPolicyRule",
     "Policy",
+    "PolicyBand",
     "PolicyDeviceM2M",
     "PolicyDynamicGroupM2M",
     "PolicyRule",

@@ -1,5 +1,6 @@
 """Rule Object Viewsets."""
 
+from django.db.models import Count
 from django.shortcuts import redirect
 from django.urls import reverse
 from nautobot.apps.views import NautobotUIViewSet
@@ -9,6 +10,21 @@ from nautobot_firewall_models import details, filters, forms, models, tables
 from nautobot_firewall_models.api import serializers
 
 
+class PolicyBandUIViewSet(NautobotUIViewSet):
+    """ViewSet for the PolicyBand model."""
+
+    bulk_update_form_class = forms.PolicyBandBulkEditForm
+    filterset_class = filters.PolicyBandFilterSet
+    filterset_form_class = forms.PolicyBandFilterForm
+    form_class = forms.PolicyBandForm
+    queryset = models.PolicyBand.objects.annotate(policy_rule_count=Count("policy_rules"))
+    serializer_class = serializers.PolicyBandSerializer
+    table_class = tables.PolicyBandTable
+    object_detail_content = details.policy_band
+
+    lookup_field = "pk"
+
+
 class PolicyRuleUIViewSet(NautobotUIViewSet):
     """ViewSet for the PolicyRule model."""
 
@@ -16,7 +32,7 @@ class PolicyRuleUIViewSet(NautobotUIViewSet):
     filterset_class = filters.PolicyRuleFilterSet
     filterset_form_class = forms.PolicyRuleFilterForm
     form_class = forms.PolicyRuleForm
-    queryset = models.PolicyRule.objects.all()
+    queryset = models.PolicyRule.objects.all().select_related("band")
     serializer_class = serializers.PolicyRuleSerializer
     table_class = tables.PolicyRuleTable
     object_detail_content = details.policy_rule

@@ -21,6 +21,37 @@ from nautobot_firewall_models.utils import get_default_status, model_to_json
     "custom_links",
     "custom_validators",
     "export_templates",
+    "graphql",
+    "relationships",
+    "webhooks",
+)
+class PolicyBand(PrimaryModel):
+    """
+    A PolicyBand is a section of a firewall policy, such as Global Deny or Medium Trust.
+
+    Bands are evaluated in index order. Every PolicyRule belongs to a band, which decides where the rule lands.
+    """
+
+    name = models.CharField(max_length=CHARFIELD_MAX_LENGTH, unique=True)
+    index = models.PositiveSmallIntegerField(unique=True, help_text="Bands are evaluated from lowest to highest.")
+    description = models.CharField(max_length=1024, blank=True)
+
+    class Meta:
+        """Meta class."""
+
+        ordering = ["index"]
+        verbose_name_plural = "Policy Bands"
+
+    def __str__(self):
+        """Stringify instance."""
+        return self.name
+
+
+@extras_features(
+    "custom_fields",
+    "custom_links",
+    "custom_validators",
+    "export_templates",
     # "graphql" is omitted on purpose: nautobot_firewall_models.graphql.types provides a custom type.
     "relationships",
     "statuses",
@@ -133,9 +164,21 @@ class PolicyRule(PrimaryModel):
     )
     request_id = models.CharField(max_length=CHARFIELD_MAX_LENGTH, blank=True, verbose_name="Request ID")
     description = models.CharField(max_length=1024, blank=True)
-    index = models.PositiveSmallIntegerField(null=True, blank=True)
+    band = models.ForeignKey(
+        to="nautobot_firewall_models.PolicyBand", on_delete=models.PROTECT, related_name="policy_rules"
+    )
+    position = models.CharField(
+        choices=choices.POSITION_CHOICES,
+        max_length=CHARFIELD_MAX_LENGTH,
+        help_text="Header rules come before the band's local rules on the firewall, Closer rules after.",
+    )
+    index = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Orders rules within a band and position. Rules may share an index."
+    )
 
     clone_fields = [
+        "band",
+        "position",
         "source_users",
         "source_user_groups",
         "source_addresses",
@@ -159,13 +202,21 @@ class PolicyRule(PrimaryModel):
     class Meta:
         """Meta class."""
 
-        ordering = ["index", "name"]
+        # Band, then Header before Closer, then index, then name so rules sharing an index keep a stable order.
+        ordering = [
+            "band__index",
+            models.Case(models.When(position="header", then=0), default=1),
+            models.F("index").asc(nulls_last=True),
+            "name",
+        ]
         verbose_name_plural = "Policy Rules"
 
     def rule_details(self):
         """Convience method to convert to more consumable dictionary."""
         row = {}
         row["rule"] = self
+        row["band"] = self.band
+        row["position"] = self.position
         row["source_address_groups"] = self.source_address_groups.all()
         row["source_addresses"] = self.source_addresses.all()
         row["source_users"] = self.source_users.all()

@@ -3,7 +3,8 @@
 # pylint: disable=invalid-name
 
 from nautobot.apps.testing import FilterTestCases
-from nautobot.extras.models import Status
+from nautobot.dcim.models import Device
+from nautobot.extras.models import DynamicGroup, Status
 from nautobot.ipam.models import IPAddress, Namespace, Prefix
 
 from nautobot_firewall_models import filters, models
@@ -168,3 +169,64 @@ class ZoneGroupTestCase(FilterTestCases.FilterTestCase):
     def setUpTestData(cls):
         """Set up test data."""
         fixtures.create_zone_group()
+
+
+class PolicyBandTestCase(FilterTestCases.FilterTestCase):
+    """Test filtering operations for PolicyBand Model."""
+
+    queryset = models.PolicyBand.objects.all()
+    filterset = filters.PolicyBandFilterSet
+    generic_filter_tests = (("name",), ("index",))
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data."""
+        fixtures.create_policy_band()
+
+
+class PolicyRuleTestCase(FilterTestCases.FilterTestCase):
+    """Test filtering operations for PolicyRule Model."""
+
+    queryset = models.PolicyRule.objects.all()
+    filterset = filters.PolicyRuleFilterSet
+    generic_filter_tests = (
+        ("band", "band__id"),
+        ("band", "band__name"),
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data."""
+        fixtures.assign_policies()
+        # A rule in a third band, outside every Policy, so each band filter matches a strict subset of rules.
+        models.PolicyRule.objects.create(
+            name="Unassigned", action="allow", band=models.PolicyBand.objects.get(name="Universal"), position="header"
+        )
+        for group in DynamicGroup.objects.all():
+            group.update_cached_members()
+        cls.assigned = models.PolicyRule.objects.exclude(name="Unassigned")
+
+    def test_position(self):
+        """Filter rules by position."""
+        params = {"position": ["closer"]}
+        self.assertQuerysetEqual(
+            self.filterset(params, self.queryset).qs, self.queryset.filter(position="closer"), ordered=False
+        )
+
+    def test_device_through_direct_assignment(self):
+        """A Device sees the rules of Policies assigned to it directly."""
+        params = {"device": ["HOU02-WAN00"]}
+        self.assertEqual([rule.name for rule in self.filterset(params, self.queryset).qs], ["Policy Rule 1"])
+
+    def test_device_through_dynamic_group(self):
+        """A Device sees the rules of Policies assigned to a Dynamic Group it belongs to, in firewall order."""
+        params = {"device": ["DFW02-WAN01"]}
+        self.assertEqual(list(self.filterset(params, self.queryset).qs), list(self.assigned))
+
+    def test_device_merges_policies_without_duplicates(self):
+        """Rules shared by several Policies on one Device appear once, in band order."""
+        device = Device.objects.get(name="DFW02-WAN00")
+        rules = list(self.filterset({"device": [device.pk]}, self.queryset).qs)
+
+        self.assertEqual(len(rules), len(set(rules)))
+        self.assertEqual(rules, list(self.assigned))

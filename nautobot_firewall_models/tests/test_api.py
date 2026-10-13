@@ -357,24 +357,44 @@ class ZoneGroupAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewT
         ]
 
 
+class PolicyBandAPIViewTest(APIViewTestCases.APIViewTestCase):
+    """Test the PolicyBand viewsets."""
+
+    model = models.PolicyBand
+    bulk_update_data = {"description": "test update description"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data for API calls."""
+        fixtures.create_policy_band()
+        models.PolicyBand.objects.create(name="deleteableobj1", index=101)
+        models.PolicyBand.objects.create(name="deleteableobj2", index=102)
+        models.PolicyBand.objects.create(name="deleteableobj3", index=103)
+        cls.create_data = [
+            {"name": "No Trust", "index": 15},
+            {"name": "High Security", "index": 25, "description": "Sensitive systems"},
+        ]
+
+
 class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewTestCase):
     """Test the PolicyRule viewsets."""
 
     model = models.PolicyRule
     bulk_update_data = {"log": False}
-    choices_fields = ["action"]
+    choices_fields = ["action", "position"]
 
     @classmethod
     def setUpTestData(cls):
         """Create test data for API calls."""
         fixtures.create_policy_rule()
+        band = models.PolicyBand.objects.first()
         src_usr = models.UserObject.objects.first()
         src_addr = models.AddressObject.objects.first()
         dest_addr = models.AddressObject.objects.last()
         svc = models.ServiceObject.objects.first()
-        models.PolicyRule.objects.create(name="deleteableobj1", action="deny", index=1)
-        models.PolicyRule.objects.create(name="deleteableobj2", action="deny", index=1)
-        models.PolicyRule.objects.create(name="deleteableobj3", action="deny", index=1)
+        models.PolicyRule.objects.create(band=band, position="header", name="deleteableobj1", action="deny", index=1)
+        models.PolicyRule.objects.create(band=band, position="header", name="deleteableobj2", action="deny", index=1)
+        models.PolicyRule.objects.create(band=band, position="header", name="deleteableobj3", action="deny", index=1)
         cls.create_data = [
             {
                 # pylint: disable=R0801
@@ -385,6 +405,8 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "log": True,
                 "destination_services": [svc.id],
                 "name": "test rule 1",
+                "band": band.id,
+                "position": "header",
             },
             {
                 "source_users": [src_usr.id],
@@ -394,6 +416,8 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "log": False,
                 "destination_services": [svc.id],
                 "name": "test rule 2",
+                "band": band.id,
+                "position": "closer",
             },
         ]
 
@@ -526,7 +550,10 @@ class ExpandedZonesAPITest(APITestCase):
         """Create a rule of each type with a zone and zone groups on both sides."""
         outside, inside, _ = fixtures.create_zone_group()
         wan = models.Zone.objects.get(name="WAN")
-        cls.policy_rule = models.PolicyRule.objects.create(name="expanded", action="allow")
+        band, _, _ = fixtures.create_policy_band()
+        cls.policy_rule = models.PolicyRule.objects.create(
+            name="expanded", action="allow", band=band, position="header"
+        )
         cls.policy_rule.source_zones.set([wan])
         cls.policy_rule.source_zone_groups.set([outside])
         cls.policy_rule.destination_zone_groups.set([inside])

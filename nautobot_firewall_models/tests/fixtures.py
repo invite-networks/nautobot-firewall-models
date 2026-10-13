@@ -184,8 +184,17 @@ def create_app_group():
     return app_grp1, app_grp2, app_grp3
 
 
+def create_policy_band():
+    """Creates 3 Policy Bands."""
+    band1, _ = PolicyBand.objects.get_or_create(name="Global Deny", index=10)
+    band2, _ = PolicyBand.objects.get_or_create(name="Universal", index=20)
+    band3, _ = PolicyBand.objects.get_or_create(name="Medium Trust", index=30)
+    return band1, band2, band3
+
+
 def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statements
     """Creates 3 of all objects."""
+    band1, _, band3 = create_policy_band()
     app1, app2, app3 = create_app_obj()
     app_grp1, app_grp2, app_grp3 = create_app_group()
     usr_obj1, usr_obj2, usr_obj3 = create_user_obj()
@@ -200,6 +209,8 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
         action="deny",
         log=True,
         name="Policy Rule 1",
+        band=band1,
+        position="header",
         status=status,
         request_id="req1",
         index=10,
@@ -220,6 +231,8 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
         action="allow",
         log=True,
         name="Policy Rule 2",
+        band=band1,
+        position="header",
         status=status,
         request_id="req2",
         index=20,
@@ -241,6 +254,8 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
         action="drop",
         log=True,
         name="Policy Rule 3",
+        band=band1,
+        position="header",
         status=status,
         request_id="req3",
         index=30,
@@ -259,10 +274,16 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule3.applications.set([app2, app3])
     pol_rule3.application_groups.set([app_grp1, app_grp2, app_grp3])
     pol_rule4, _ = PolicyRule.objects.get_or_create(
-        name="END OF ACCESS LIST", action="remark", log=False, request_id="req4", index=99
+        name="END OF ACCESS LIST",
+        action="remark",
+        log=False,
+        request_id="req4",
+        band=band3,
+        position="closer",
+        index=99,
     )
     pol_rule5, _ = PolicyRule.objects.get_or_create(
-        name="DENY ALL", action="deny", log=False, request_id="req5", index=100
+        name="DENY ALL", action="deny", log=False, request_id="req5", band=band3, position="closer", index=100
     )
     return pol_rule1, pol_rule2, pol_rule3, pol_rule4, pol_rule5
 

@@ -178,12 +178,28 @@ class ZoneGroupTable(StatusTableMixin, BaseTable):
         fields = ("pk", "name", "zones", "description", "status")
 
 
+class PolicyBandTable(BaseTable):
+    """Table for list view."""
+
+    pk = ToggleColumn()
+    name = tables.Column(linkify=True)
+    policy_rule_count = tables.Column(verbose_name="Policy Rules")
+    actions = ButtonsColumn(models.PolicyBand, buttons=("edit", "delete"))
+
+    class Meta(BaseTable.Meta):
+        """Meta attributes."""
+
+        model = models.PolicyBand
+        fields = ("pk", "index", "name", "description", "policy_rule_count", "actions")
+
+
 # TODO: refactor
 class PolicyRuleTable(StatusTableMixin, BaseTable):
     """Table for list view."""
 
     pk = ToggleColumn()
     name = tables.LinkColumn()
+    band = tables.Column(linkify=True)
     actions = ButtonsColumn(models.PolicyRule, buttons=("edit", "delete"))
 
     class Meta(BaseTable.Meta):
@@ -193,6 +209,9 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
         fields = (
             # pylint: disable=duplicate-code
             "pk",
+            "band",
+            "position",
+            "index",
             "name",
             "source_users",
             "source_user_groups",
@@ -219,6 +238,9 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
         )
         default_columns = (
             "pk",
+            "band",
+            "position",
+            "index",
             "name",
             "source_users",
             "source_user_groups",

@@ -560,10 +560,46 @@ class ZoneGroupBulkEditForm(NautobotBulkEditForm):
         ]
 
 
-class PolicyRuleFilterForm(NautobotFilterForm):
+class PolicyBandFilterForm(NautobotFilterForm):
     """Filter form to filter searches."""
 
     field_order = ["q", "name"]
+
+    model = models.PolicyBand
+    q = forms.CharField(
+        required=False,
+        label="Search",
+        help_text="Search within Name or Description.",
+    )
+    name = forms.CharField(required=False, label="Name")
+
+
+class PolicyBandForm(NautobotModelForm):
+    """PolicyBand creation/edit form."""
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.PolicyBand
+        fields = ["name", "index", "description", "tags"]
+
+
+class PolicyBandBulkEditForm(NautobotBulkEditForm):
+    """PolicyBand bulk edit form."""
+
+    pk = DynamicModelMultipleChoiceField(queryset=models.PolicyBand.objects.all(), widget=forms.MultipleHiddenInput)
+    description = forms.CharField(required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        nullable_fields = ["description"]
+
+
+class PolicyRuleFilterForm(NautobotFilterForm):
+    """Filter form to filter searches."""
+
+    field_order = ["q", "name", "band", "position", "device"]
 
     model = models.PolicyRule
     q = forms.CharField(
@@ -572,6 +608,11 @@ class PolicyRuleFilterForm(NautobotFilterForm):
         help_text="Search within Name or Description.",
     )
     name = forms.CharField(required=False, label="Name")
+    band = DynamicModelMultipleChoiceField(
+        queryset=models.PolicyBand.objects.all(), to_field_name="name", required=False, label="Policy Band"
+    )
+    position = forms.MultipleChoiceField(choices=choices.POSITION_CHOICES, required=False)
+    device = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
     tag = TagFilterField(models.PolicyRule)
 
 
@@ -579,6 +620,7 @@ class PolicyRuleForm(NautobotModelForm):
     """PolicyRule creation/edit form."""
 
     tags = DynamicModelMultipleChoiceField(queryset=Tag.objects.all(), required=False)
+    band = DynamicModelChoiceField(queryset=models.PolicyBand.objects.all(), label="Policy Band")
     source_users = DynamicModelMultipleChoiceField(
         queryset=models.UserObject.objects.all(), label="Source User Objects", required=False
     )
@@ -638,6 +680,8 @@ class PolicyRuleForm(NautobotModelForm):
         fields = (
             # pylint: disable=duplicate-code
             "name",
+            "band",
+            "position",
             "index",
             "source_users",
             "source_user_groups",
@@ -669,6 +713,9 @@ class PolicyRuleBulkEditForm(NautobotBulkEditForm):
     """PolicyRule bulk edit form."""
 
     pk = DynamicModelMultipleChoiceField(queryset=models.PolicyRule.objects.all(), widget=forms.MultipleHiddenInput)
+    band = DynamicModelChoiceField(queryset=models.PolicyBand.objects.all(), required=False, label="Policy Band")
+    position = forms.ChoiceField(choices=add_blank_choice(choices.POSITION_CHOICES), required=False)
+    index = forms.IntegerField(required=False, min_value=0)
     action = forms.ChoiceField(choices=add_blank_choice(choices.ACTION_CHOICES), required=False)
     log = forms.BooleanField(required=False)
     description = forms.CharField(required=False)
@@ -676,7 +723,7 @@ class PolicyRuleBulkEditForm(NautobotBulkEditForm):
     class Meta:
         """Meta attributes."""
 
-        nullable_fields = ["description", "tags"]
+        nullable_fields = ["description", "tags", "index"]
 
 
 class PolicyFilterForm(NautobotFilterForm, TenancyFilterForm):

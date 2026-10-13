@@ -109,6 +109,8 @@ Example GraphQL query showing how to get instances for each of the models provid
 
 A rule can reference Zones directly, Zone Groups, or both. The `expanded_source_zones` and `expanded_destination_zones` fields return the combined, de-duplicated list of Zones with every Zone Group resolved into its members, which is what deployment tooling should use. An empty list means no Zone was set (implicit any). The same fields are available on NAT Policy Rules and in the REST API.
 
+Policy Rules are returned in firewall order: by Policy Band index, then Header before Closer, then rule index, then name. Filter with `device` to get the merged, de-duplicated rule list for one Device across every Policy assigned to it directly or through a Dynamic Group. For example, `/api/plugins/firewall/policy-rule/?device=DFW-WAN00`, or `policy_rules(device: "DFW-WAN00")` in GraphQL.
+
 #### Response
 
 ```json

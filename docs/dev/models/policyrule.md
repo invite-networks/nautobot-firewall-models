@@ -23,10 +23,15 @@ It is recommended to use a descriptive name to best identify a PolicyRule, other
 * Log (boolean)
 * Request ID (optional, string)
     * Meant to represent an upstream request (e.g. an service request from an ITSM solution).
+* Band (FK to PolicyBand)
+    * The section of the policy the rule belongs to.
+* Position (string, choice of header closer)
+    * Header rules come before the band's locally created rules on the firewall, Closer rules after.
 * Index (optional, int)
-    * Sets the index of the PolicyRule in the Policy.
+    * Orders rules within a band and position. Rules may share an index when their order does not matter.
     * Example `20 permit icmp host 1.1.1.1 any` would have an index of `20`.
-    * Set as optional for now, will be set to required at a later date with default as the highest value + 10.
+
+Rules are ordered by band index, then Header before Closer, then index (rules without one last), then name.
 
 ## Examples
 

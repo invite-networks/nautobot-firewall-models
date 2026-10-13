@@ -20,6 +20,19 @@ Zones also gain a `devices` field so one Zone can be bound to multiple Devices. 
 
 Rolling the migrations back keeps only the first Zone (by name) on each side of a rule and drops all Zone Group assignments and Zone to Device bindings.
 
+## Upgrade 4.0 to 4.1
+
+Version 4.1 adds Policy Bands. Every Policy Rule now requires a `band` and a `position` (`header` or `closer`), and rules are ordered by band rather than by index alone.
+
+The migration does not assign bands to existing rules. If any Policy Rules exist, it stops with an error before changing the database. To upgrade with existing rules:
+
+1. Export the Policy Rules (CSV or REST API) and delete them.
+2. Upgrade and run `nautobot-server post-upgrade`.
+3. Create the Policy Bands under Security > Policy > Policy Bands.
+4. Add `band` and `position` to the exported rules and import them again.
+
+Integrations that create Policy Rules must now send `band` and `position`. To get one Device's rules in firewall order, merged across every Policy assigned to it directly or through a Dynamic Group, call `/api/plugins/firewall/policy-rule/?device=<device name or id>`.
+
 ## Upgrade Guide
 
 When a new release comes out it may be necessary to run a migration of the database to account for any changes in the data models used by this app. Execute the command `nautobot-server post-upgrade` within the runtime environment of your Nautobot installation after updating the `nautobot-firewall-models` package via `pip`.

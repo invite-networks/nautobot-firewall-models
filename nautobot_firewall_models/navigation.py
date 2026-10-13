@@ -126,6 +126,12 @@ menu_items = (
                         weight=200,
                         permissions=["nautobot_firewall_models.view_policy"],
                     ),
+                    NavMenuItem(
+                        link="plugins:nautobot_firewall_models:policyband_list",
+                        name="Policy Bands",
+                        weight=300,
+                        permissions=["nautobot_firewall_models.view_policyband"],
+                    ),
                 ],
             ),
             NavMenuGroup(

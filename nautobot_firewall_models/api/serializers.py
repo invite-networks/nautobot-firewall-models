@@ -171,6 +171,16 @@ class ExpandedZoneSerializer(serializers.ModelSerializer):
         fields = ["id", "url", "name"]
 
 
+class PolicyBandSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+    """PolicyBand Serializer."""
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.PolicyBand
+        fields = "__all__"
+
+
 class PolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """PolicyRule Serializer."""
 

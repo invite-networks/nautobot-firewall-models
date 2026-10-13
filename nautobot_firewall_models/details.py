@@ -314,13 +314,31 @@ policy = ui.ObjectDetailContent(
     ),
 )
 
+policy_band = ui.ObjectDetailContent(
+    panels=(
+        ui.ObjectFieldsPanel(
+            section=ui.SectionChoices.LEFT_HALF,
+            weight=100,
+            fields=["name", "index", "description"],
+        ),
+        ui.ObjectsTablePanel(
+            weight=100,
+            section=ui.SectionChoices.FULL_WIDTH,
+            table_class=tables.PolicyRuleTable,
+            table_filter="band",
+            related_field_name="band",
+            exclude_columns=["band"],
+        ),
+    ),
+)
+
 policy_rule = ui.ObjectDetailContent(
     panels=(
         PolicyRuleFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed, needs additional_fields=["ip_addresses"]
-            fields=["description", "policies__all", "status"],
+            fields=["band", "position", "index", "description", "policies__all", "status"],
             key_transforms={"policies__all": "Assigned Policies"},
         ),
         ui.Panel(
