@@ -68,7 +68,7 @@ class UserObject(PrimaryModel):
 class UserObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Grouping of individual user objects, does NOT have any relationship to AD groups or any other IDP group."""
 
-    members_field = "user_objects"
+    members_fields = ("user_objects",)
 
     description = models.CharField(
         max_length=1024,

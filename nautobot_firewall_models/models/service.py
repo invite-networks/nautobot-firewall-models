@@ -104,7 +104,7 @@ class ApplicationObject(PrimaryModel):
 class ApplicationObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Groups together ApplicationObjects to better mimic grouping sets of application objects that have a some commonality."""
 
-    members_field = "application_objects"
+    members_fields = ("application_objects",)
 
     description = models.CharField(max_length=1024, blank=True)
     name = models.CharField(
@@ -202,7 +202,7 @@ class ServiceObject(PrimaryModel):
 class ServiceObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Groups service objects."""
 
-    members_field = "service_objects"
+    members_fields = ("service_objects",)
 
     description = models.CharField(
         max_length=1024,

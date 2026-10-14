@@ -3,6 +3,7 @@
 import uuid
 
 from django import forms
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from nautobot.apps.forms import APISelectMultiple
 
@@ -26,7 +27,9 @@ class ManagedLocallyGroupFormMixin:
         """Check the submitted status and members together, since both may change in one edit."""
         super().clean()
         model = self._meta.model
-        model.validate_managed_members(self.cleaned_data.get("status"), self.cleaned_data.get(model.members_field))
+        model.validate_managed_members(
+            self.cleaned_data.get("status"), {field: self.cleaned_data.get(field) for field in model.members_fields}
+        )
         return self.cleaned_data
 
 
@@ -48,14 +51,15 @@ class ObjectOrGroupFormMixin:
     still limits them to what the user may view, but they are hidden and filled from one `<field>_and_groups` picker.
     """
 
-    # Suffix of an object field, mapped to the suffix of its group field. The suffix also names the grouped objects
-    # API kind the picker searches.
+    # Suffix of an object field, mapped to the suffix of its group field and the grouped objects API kind the picker
+    # searches.
     GROUPED_SUFFIXES = {
-        "zones": "zone_groups",
-        "addresses": "address_groups",
-        "services": "service_groups",
-        "users": "user_groups",
-        "applications": "application_groups",
+        "zones": ("zone_groups", "zones"),
+        "addresses": ("address_groups", "addresses"),
+        "address_objects": ("address_object_groups", "addresses"),
+        "services": ("service_groups", "services"),
+        "users": ("user_groups", "users"),
+        "applications": ("application_groups", "applications"),
     }
     PREFIXES = ("group:", "object:")
 
@@ -63,10 +67,10 @@ class ObjectOrGroupFormMixin:
         """Replace each object and group field pair with one combined picker in the object field's position."""
         self.grouped_pairs = {}
         for name in self.fields:
-            for suffix, group_suffix in self.GROUPED_SUFFIXES.items():
+            for suffix, (group_suffix, kind) in self.GROUPED_SUFFIXES.items():
                 group_name = name.removesuffix(suffix) + group_suffix
                 if name.endswith(suffix) and group_name in self.fields:
-                    self.grouped_pairs[f"{name}_and_groups"] = (name, group_name, suffix)
+                    self.grouped_pairs[f"{name}_and_groups"] = (name, group_name, kind)
         fields = {}
         for name, field in self.fields.items():
             if f"{name}_and_groups" in self.grouped_pairs:
@@ -129,6 +133,22 @@ class ObjectOrGroupFormMixin:
         return [(f"group:{i.pk}", str(i)) for i in selected[groups_name]] + [
             (f"object:{i.pk}", str(i)) for i in selected[objects_name]
         ]
+
+    def add_error(self, field, error):
+        """Show errors raised for a hidden object or group field on the combined picker that sets it."""
+        combined = {
+            name: combined_name
+            for combined_name, (objects_name, groups_name, _kind) in getattr(self, "grouped_pairs", {}).items()
+            for name in (objects_name, groups_name)
+        }
+        if field is None and hasattr(error, "error_dict"):
+            errors = {}
+            for name, messages in error.error_dict.items():
+                errors.setdefault(combined.get(name, name), []).extend(messages)
+            error = ValidationError(errors)
+        else:
+            field = combined.get(field, field)
+        super().add_error(field, error)
 
     def clean(self):
         """Split each combined picker back into its object and group fields."""

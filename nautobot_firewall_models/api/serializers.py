@@ -14,10 +14,12 @@ class ManagedLocallyGroupSerializerMixin:
         """Check the resulting status and members together, using saved values for fields a PATCH leaves out."""
         model = self.Meta.model
         status = attrs.get("status", self.instance.status if self.instance else None)
-        if model.members_field in attrs:
-            members = attrs[model.members_field]
-        else:
-            members = getattr(self.instance, model.members_field).all() if self.instance else []
+        members = {}
+        for field in model.members_fields:
+            if field in attrs:
+                members[field] = attrs[field]
+            else:
+                members[field] = getattr(self.instance, field).all() if self.instance else []
         run_model_check(model.validate_managed_members, status, members)
         return super().validate(attrs)
 
@@ -62,9 +64,11 @@ class AddressObjectGroupSerializer(
         fields = "__all__"
 
     def validate(self, attrs):
-        """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses the group."""
-        if self.instance and "address_objects" in attrs:
-            run_model_check(self.instance.validate_address_objects, attrs["address_objects"])
+        """Refuse nested groups that would loop, and host relative members while a PAN-OS or NAT rule uses the group."""
+        if self.instance:
+            run_model_check(
+                self.instance.validate_members, attrs.get("address_objects"), attrs.get("address_object_groups")
+            )
         return super().validate(attrs)
 
 

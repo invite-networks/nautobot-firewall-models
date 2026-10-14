@@ -74,7 +74,8 @@ class AddressObjectGroupUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         AddressObjectGroup.objects.create(name="deleteableobj1")
         AddressObjectGroup.objects.create(name="deleteableobj2")
         AddressObjectGroup.objects.create(name="deleteableobj3")
-        cls.form_data = {"name": "test1", "address_objects": [addr_obj.id], "status": status}
+        # The form takes Address Objects and nested groups through one combined picker.
+        cls.form_data = {"name": "test1", "address_objects_and_groups": [f"object:{addr_obj.id}"], "status": status}
         cls.csv_data = (
             "name,address_objects,status",
             f'csvobj1,"{addr_obj.id}",Active',
@@ -915,9 +916,66 @@ class ManagedLocallyUIViewTest(TestCase):
         member = AddressObject.objects.create(name="local", dynamic="subnet")
         response = self.client.post(
             reverse("plugins:nautobot_firewall_models:addressobjectgroup_add"),
-            post_data({"name": "High risk", "status": self.managed.pk, "address_objects": [member.pk]}),
+            post_data(
+                {"name": "High risk", "status": self.managed.pk, "address_objects_and_groups": [f"object:{member.pk}"]}
+            ),
         )
 
         self.assertHttpStatus(response, 200)
         self.assertContains(response, "A Managed Locally group is defined on the firewall")
         self.assertFalse(AddressObjectGroup.objects.filter(name="High risk").exists())
+
+
+class NestedAddressGroupUIViewTest(TestCase):
+    """Test the Address Object Group form's combined picker for Address Objects and nested groups."""
+
+    def setUp(self):
+        """Grant access to Address Objects and their groups."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_addressobjectgroup",
+            "nautobot_firewall_models.change_addressobjectgroup",
+            "nautobot_firewall_models.view_addressobjectgroup",
+            "nautobot_firewall_models.view_addressobject",
+            "extras.view_status",
+        )
+        self.status = Status.objects.get(name="Active")
+        self.url = reverse("plugins:nautobot_firewall_models:addressobjectgroup_add")
+
+    def test_form_shows_one_picker_for_objects_and_groups(self):
+        """The group form has one searching picker in place of the separate Address Object field."""
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'name="address_objects_and_groups"')
+        self.assertContains(response, 'data-url="/api/plugins/firewall/grouped-objects/addresses/"')
+        self.assertNotContains(response, 'name="address_objects"')
+
+    def test_picker_saves_objects_and_nested_groups(self):
+        """The picker's selection is split into Address Objects and nested groups."""
+        member = AddressObject.objects.create(name="office", dynamic="subnet")
+        child = AddressObjectGroup.objects.create(name="child")
+        data = {
+            "name": "parent",
+            "status": self.status.pk,
+            "address_objects_and_groups": [f"object:{member.pk}", f"group:{child.pk}"],
+        }
+        response = self.client.post(self.url, post_data(data))
+
+        self.assertHttpStatus(response, 302)
+        parent = AddressObjectGroup.objects.get(name="parent")
+        self.assertEqual(list(parent.address_objects.all()), [member])
+        self.assertEqual(list(parent.address_object_groups.all()), [child])
+
+    def test_form_refuses_a_loop(self):
+        """Editing a group to contain a group that already contains it is refused."""
+        parent = AddressObjectGroup.objects.create(name="parent")
+        child = AddressObjectGroup.objects.create(name="child")
+        parent.address_object_groups.add(child)
+        data = {"name": "child", "status": self.status.pk, "address_objects_and_groups": [f"group:{parent.pk}"]}
+        response = self.client.post(
+            reverse("plugins:nautobot_firewall_models:addressobjectgroup_edit", kwargs={"pk": child.pk}),
+            post_data(data),
+        )
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "A group can not contain itself")

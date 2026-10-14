@@ -47,6 +47,15 @@ class BaseFieldsPanelMixin:
         return super().render_value(key, value, instance)
 
 
+class AddressObjectGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
+    """Set `key_and_reverse_url_string` for AddressObjectGroup."""
+
+    key_and_reverse_url_string = {
+        "address_object_groups": "plugins:nautobot_firewall_models:addressobjectgroup_list",
+        "parent_groups": "plugins:nautobot_firewall_models:addressobjectgroup_list",
+    }
+
+
 class ServiceObjectGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     """Set `key_and_reverse_url_string` for ServiceObjectGroup."""
 
@@ -117,11 +126,12 @@ address_object = ui.ObjectDetailContent(
 
 address_object_group = ui.ObjectDetailContent(
     panels=(
-        ui.ObjectFieldsPanel(
+        AddressObjectGroupFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed
-            fields=["name", "description", "flatten", "status"],
+            fields=["name", "description", "address_object_groups", "parent_groups", "flatten", "status"],
+            key_transforms={"address_object_groups": "Nested Groups", "parent_groups": "Member Of"},
         ),
         ui.ObjectsTablePanel(
             weight=100,

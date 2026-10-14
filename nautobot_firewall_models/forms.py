@@ -132,21 +132,31 @@ class AddressObjectGroupFilterForm(NautobotFilterForm):
     name = forms.CharField(required=False, label="Name")
 
 
-class AddressObjectGroupForm(fields.ManagedLocallyGroupFormMixin, NautobotModelForm):
-    """AddressObjectGroup creation/edit form."""
+class AddressObjectGroupForm(fields.ManagedLocallyGroupFormMixin, fields.ObjectOrGroupFormMixin, NautobotModelForm):  # pylint: disable=too-many-ancestors
+    """AddressObjectGroup creation/edit form, with one picker for its Address Objects and nested groups."""
 
     address_objects = DynamicModelMultipleChoiceField(queryset=models.AddressObject.objects.all(), required=False)
+    address_object_groups = DynamicModelMultipleChoiceField(
+        queryset=models.AddressObjectGroup.objects.all(), required=False
+    )
 
     class Meta:
         """Meta attributes."""
 
         model = models.AddressObjectGroup
-        fields = ["name", "description", "address_objects", "flatten", "status", "tags"]
+        fields = ["name", "description", "address_objects", "address_object_groups", "flatten", "status", "tags"]
+
+    def __init__(self, *args, **kwargs):
+        """Show one picker for Address Objects and nested Address Object Groups."""
+        super().__init__(*args, **kwargs)
+        self.combine_grouped_fields()
 
     def clean(self):
-        """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses the group."""
+        """Refuse nested groups that would loop, and host relative members while a PAN-OS or NAT rule uses the group."""
         super().clean()
-        self.instance.validate_address_objects(self.cleaned_data.get("address_objects"))
+        self.instance.validate_members(
+            self.cleaned_data.get("address_objects"), self.cleaned_data.get("address_object_groups")
+        )
         return self.cleaned_data
 
 

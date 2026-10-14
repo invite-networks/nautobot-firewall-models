@@ -27,11 +27,11 @@ NAT_POLICY_RULE_RELATIONS = (
 
 
 def host_relative_names(objects):
-    """Return the names of the host relative Address Objects in `objects`, looking inside any Address Object Groups."""
+    """Return the names of the host relative Address Objects in `objects`, looking inside nested groups too."""
     names = set()
     for obj in objects or []:
         if isinstance(obj, AddressObjectGroup):
-            names.update(str(i) for i in obj.address_objects.all() if i.is_host_relative)
+            names.update(str(i) for i in obj.all_address_objects() if i.is_host_relative)
         elif obj.is_host_relative:
             names.add(str(obj))
     return sorted(names)
@@ -202,7 +202,7 @@ class AddressObject(PrimaryModel):
         if self.is_host_relative:
             rules = set(rules_refusing_host_relative(self))
             if self.present_in_database:
-                for group in self.address_object_groups.all():
+                for group in AddressObjectGroup.related_groups(self.address_object_groups.all(), "parent_groups"):
                     rules.update(rules_refusing_host_relative(group))
             if rules:
                 raise ValidationError(
@@ -254,9 +254,12 @@ class AddressObject(PrimaryModel):
     "webhooks",
 )
 class AddressObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
-    """Groups together AddressObjects to better mimic grouping sets of address objects that have a some commonality."""
+    """Groups together AddressObjects to better mimic grouping sets of address objects that have a some commonality.
 
-    members_field = "address_objects"
+    A group may also hold other groups, to any depth, as long as no group ends up containing itself.
+    """
+
+    members_fields = ("address_objects", "address_object_groups")
 
     description = models.CharField(
         max_length=1024,
@@ -271,9 +274,17 @@ class AddressObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
         blank=True,
         verbose_name="Address Objects",
     )
+    address_object_groups = models.ManyToManyField(
+        to="self",
+        symmetrical=False,
+        related_name="parent_groups",
+        blank=True,
+        verbose_name="Address Object Groups",
+        help_text="Groups nested in this group.",
+    )
     flatten = models.BooleanField(
         default=False,
-        help_text="When a rule is rendered, list this group's Address Objects in place of the group itself.",
+        help_text="When a rule is rendered, list this group's members in place of the group itself.",
     )
     status = StatusField(
         on_delete=models.PROTECT,
@@ -299,28 +310,81 @@ class AddressObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
                 {"flatten": "A Managed Locally group has no members here, so it can not be flattened."}
             )
 
-    def validate_address_objects(self, address_objects):
-        """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses this group."""
-        names = host_relative_names(address_objects)
-        rules = rules_refusing_host_relative(self) if names else []
-        if rules:
-            raise ValidationError(
-                {
-                    "address_objects": f"{', '.join(names)} only work on nftables rules, and this group is used by: "
-                    f"{', '.join(rules)}."
-                }
+    @classmethod
+    def related_groups(cls, groups, relation):
+        """Return `groups` plus every group reachable from them through `relation`, at any depth.
+
+        `relation` is "address_object_groups" to walk down to nested groups, or "parent_groups" to walk up to the
+        groups that contain them.
+        """
+        # The next groups are the ones whose reverse relation points back at the current frontier.
+        reverse = {"address_object_groups": "parent_groups", "parent_groups": "address_object_groups"}[relation]
+        found = {i.pk for i in groups if i.pk}
+        frontier = set(found)
+        while frontier:
+            frontier = set(
+                cls.objects.filter(**{f"{reverse}__in": frontier}).exclude(pk__in=found).values_list("pk", flat=True)
             )
+            found |= frontier
+        return cls.objects.filter(pk__in=found)
+
+    def all_address_objects(self):
+        """Return the Address Objects in this group and in every group nested in it."""
+        groups = self.related_groups([self], "address_object_groups") if self.present_in_database else []
+        return AddressObject.objects.filter(address_object_groups__in=groups).distinct()
+
+    def validate_members(self, address_objects=(), address_object_groups=()):
+        """Refuse members that would make this group contain itself, or put a host relative Address Object under a rule.
+
+        Host relative Address Objects, directly or through nested groups, are refused while a PAN-OS or NAT Policy
+        Rule uses this group or any group containing it.
+        """
+        errors = {}
+        ancestors = self.related_groups([self], "parent_groups") if self.present_in_database else []
+        if loops := sorted(str(i) for i in address_object_groups or [] if i in ancestors):
+            errors["address_object_groups"] = (
+                f"A group can not contain itself, directly or through another group: {', '.join(loops)}."
+            )
+        rules = set()
+        for group in ancestors:
+            rules.update(rules_refusing_host_relative(group))
+        for field, members in (("address_objects", address_objects), ("address_object_groups", address_object_groups)):
+            if rules and field not in errors and (names := host_relative_names(members)):
+                errors[field] = (
+                    f"{', '.join(names)} only work on nftables rules, and this group is used by: "
+                    f"{', '.join(sorted(rules))}."
+                )
+        if errors:
+            raise ValidationError(errors)
+
+
+def _flatten(group, seen):
+    """Return the Address Object and Address Object Group pks `group` renders as, opening flattened groups."""
+    if not group.flatten:
+        return set(), {group.pk}
+    objects = set(group.address_objects.values_list("pk", flat=True))
+    groups = set()
+    for child in group.address_object_groups.exclude(pk__in=seen):
+        child_objects, child_groups = _flatten(child, seen | {child.pk})
+        objects |= child_objects
+        groups |= child_groups
+    if not objects and not groups:
+        # An empty flattened group stays a group, so the rule never silently widens to any address.
+        return set(), {group.pk}
+    return objects, groups
 
 
 def render_addresses(address_objects, address_groups):
     """Return the Address Objects and Address Object Groups a rule side is rendered with.
 
-    Each flattened group is replaced by its Address Objects. A flattened group that is empty stays a group, so the
-    rule never silently widens to any address.
+    Each flattened group is replaced by its members. A nested group that is also flattened is opened in turn, and one
+    that is not stays a group. A flattened group that renders as nothing stays a group, so the rule never silently
+    widens to any address.
     """
-    groups = list(address_groups.all())
-    flattened = [i.pk for i in groups if i.flatten and i.address_objects.exists()]
-    objects = AddressObject.objects.filter(
-        models.Q(pk__in=address_objects.values("pk")) | models.Q(address_object_groups__in=flattened)
-    ).distinct()
-    return objects, AddressObjectGroup.objects.filter(pk__in=[i.pk for i in groups if i.pk not in flattened])
+    objects = set(address_objects.values_list("pk", flat=True))
+    groups = set()
+    for group in address_groups.all():
+        group_objects, group_groups = _flatten(group, {group.pk})
+        objects |= group_objects
+        groups |= group_groups
+    return AddressObject.objects.filter(pk__in=objects), AddressObjectGroup.objects.filter(pk__in=groups)

@@ -956,3 +956,90 @@ class TestFlattenedAddressGroups(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             group.full_clean()
         self.assertIn("flatten", ctx.exception.message_dict)
+
+
+class TestNestedAddressGroups(TestCase):
+    """Test Address Object Groups that hold other groups."""
+
+    def setUp(self) -> None:
+        """Create a three level chain of groups: top holds middle, which holds bottom."""
+        self.top = AddressObjectGroup.objects.create(name="top")
+        self.middle = AddressObjectGroup.objects.create(name="middle")
+        self.bottom = AddressObjectGroup.objects.create(name="bottom")
+        self.top.address_object_groups.add(self.middle)
+        self.middle.address_object_groups.add(self.bottom)
+        self.subnet = AddressObject.objects.create(name="host subnet", dynamic="subnet")
+        self.office = AddressObject.objects.create(name="office", fqdn=FQDN.objects.create(name="office.example.com"))
+        band, _, _ = fixtures.create_policy_band()
+        self.panos = PolicyRule.objects.create(
+            name="pan", action="allow", rule_type="panos", band=band, position="header"
+        )
+
+    def test_group_can_not_contain_itself(self):
+        """A group can not hold itself, directly or through nested groups, from either side."""
+        for group, child in ((self.top, self.top), (self.bottom, self.top)):
+            with self.subTest(group=str(group), child=str(child)), self.assertRaises(ValidationError):
+                with transaction.atomic():
+                    group.address_object_groups.add(child)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            self.bottom.parent_groups.add(self.bottom)
+
+    def test_all_address_objects_includes_nested_groups(self):
+        """A group's Address Objects include those of every nested group."""
+        self.top.address_objects.add(self.office)
+        self.bottom.address_objects.add(self.subnet)
+
+        self.assertCountEqual(self.top.all_address_objects(), [self.office, self.subnet])
+
+    def test_panos_rule_refuses_group_with_nested_host_relative_address(self):
+        """A PAN-OS rule refuses a group whose nested group holds a host relative object."""
+        self.bottom.address_objects.add(self.subnet)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            self.panos.source_address_groups.add(self.top)
+
+    def test_nested_group_under_panos_rule_refuses_host_relative_address(self):
+        """A group nested under a group a PAN-OS rule uses can not gain a host relative object."""
+        self.panos.source_address_groups.add(self.top)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            self.bottom.address_objects.add(self.subnet)
+
+    def test_object_nested_under_panos_rule_can_not_become_dynamic(self):
+        """An object in a group nested under a PAN-OS rule's group can not become host relative."""
+        self.bottom.address_objects.add(self.office)
+        self.panos.destination_address_groups.add(self.top)
+        self.office.fqdn = None
+        self.office.dynamic = "subnet"
+        with self.assertRaises(ValidationError):
+            self.office.save()
+
+    def test_managed_locally_group_refuses_nested_groups(self):
+        """A Managed Locally group can not hold nested groups either."""
+        local = AddressObjectGroup.objects.create(name="local", status=Status.objects.get(name="Managed Locally"))
+        with self.assertRaises(ValidationError), transaction.atomic():
+            local.address_object_groups.add(self.bottom)
+
+    def test_flatten_opens_flattened_nested_groups_and_keeps_others(self):
+        """A flattened group renders as its members: flattened nested groups open, others stay groups."""
+        self.top.flatten = True
+        self.top.save()
+        self.middle.flatten = True
+        self.middle.save()
+        self.top.address_objects.add(self.office)
+        self.bottom.address_objects.add(self.subnet)
+        rule = PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
+        rule.source_address_groups.add(self.top)
+
+        self.assertEqual(list(rule.rendered_source_addresses()), [self.office])
+        self.assertEqual(list(rule.rendered_source_address_groups()), [self.bottom])
+
+    def test_empty_nested_flattened_group_stays_a_group(self):
+        """When every level is flattened and the innermost group is empty, that group stays, so the rule never widens
+        to any address."""
+        for group in (self.top, self.middle, self.bottom):
+            group.flatten = True
+            group.save()
+        rule = PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
+        rule.source_address_groups.add(self.top)
+
+        self.assertEqual(list(rule.rendered_source_address_groups()), [self.bottom])
+        self.assertEqual(list(rule.rendered_source_addresses()), [])

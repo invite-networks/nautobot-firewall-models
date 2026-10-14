@@ -32,6 +32,7 @@ ON_DELETE = {
         "translated_destination_nat_policy_rules",
     ],
     models.AddressObjectGroup: [
+        "parent_groups",
         "source_policy_rules",
         "destination_policy_rules",
         "original_source_nat_policy_rules",
@@ -118,10 +119,11 @@ if PLUGIN_CFG["protect_on_delete"]:
                 raise ValidationError(f"{instance} is assigned to an {i} & `protect_on_delete` is enabled.")
 
 
-def check_address_group_members(group, _field, objects):
-    """Refuse members on a Managed Locally group, and host relative ones while a PAN-OS or NAT rule uses the group."""
-    group.validate_managed_members(group.status, objects)
-    group.validate_address_objects(objects)
+def check_group_members(group, field, objects):
+    """Refuse members on a Managed Locally group, and for Address Object Groups, loops and host relative members."""
+    group.validate_managed_members(group.status, {field: objects})
+    if isinstance(group, models.AddressObjectGroup):
+        group.validate_members(**{field: objects})
 
 
 # Many-to-many assignments that depend on a rule type, host relative Address Objects or Managed Locally groups. Forms and the REST API run
@@ -146,13 +148,15 @@ M2M_CHECKS = {
         )
         for field in (*models.NATPolicyRule.UNSUPPORTED_RELATIONS, *models.NATPolicyRule.ADDRESS_RELATIONS)
     },
-    models.AddressObjectGroup.address_objects.through: ("address_objects", check_address_group_members),
     **{
-        getattr(group, group.members_field).through: (
-            group.members_field,
-            lambda group, _field, objects: group.validate_managed_members(group.status, objects),
+        getattr(group, field).through: (field, check_group_members)
+        for group in (
+            models.AddressObjectGroup,
+            models.ServiceObjectGroup,
+            models.ApplicationObjectGroup,
+            models.UserObjectGroup,
         )
-        for group in (models.ServiceObjectGroup, models.ApplicationObjectGroup, models.UserObjectGroup)
+        for field in group.members_fields
     },
     models.Policy.policy_rules.through: (
         "policy_rules",

@@ -922,3 +922,44 @@ class RenderedAddressesAPITest(APITestCase):
         rule = response.data["data"]["policy_rules"][0]
         self.assertEqual([i["name"] for i in rule["rendered_source_addresses"]], ["CN", "RU"])
         self.assertEqual(rule["rendered_source_address_groups"], [])
+
+
+class NestedAddressGroupAPITest(APITestCase):
+    """Test nested Address Object Groups over the REST API."""
+
+    def setUp(self):
+        """Grant access to Address Object Groups."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_addressobjectgroup",
+            "nautobot_firewall_models.change_addressobjectgroup",
+            "nautobot_firewall_models.view_addressobjectgroup",
+        )
+        self.parent = models.AddressObjectGroup.objects.create(name="parent")
+        self.child = models.AddressObjectGroup.objects.create(name="child")
+
+    def _url(self, pk=None):
+        if pk:
+            return reverse("plugins-api:nautobot_firewall_models-api:addressobjectgroup-detail", kwargs={"pk": pk})
+        return reverse("plugins-api:nautobot_firewall_models-api:addressobjectgroup-list")
+
+    def test_create_group_with_nested_group(self):
+        """A group can be created holding another group."""
+        response = self.client.post(
+            self._url(), {"name": "new", "address_object_groups": [str(self.child.pk)]}, format="json", **self.header
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
+        self.assertEqual(
+            list(models.AddressObjectGroup.objects.get(name="new").address_object_groups.all()), [self.child]
+        )
+
+    def test_loop_is_refused(self):
+        """Nesting a group inside one of its own nested groups is refused."""
+        self.parent.address_object_groups.add(self.child)
+        response = self.client.patch(
+            self._url(self.child.pk), {"address_object_groups": [str(self.parent.pk)]}, format="json", **self.header
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("address_object_groups", response.data)
