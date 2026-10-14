@@ -10,9 +10,46 @@ from nautobot.core.models.generics import PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 from nautobot.ipam.fields import VarbinaryIPField
-from netaddr import IPAddress
+from netaddr import IPAddress, IPNetwork
 
+from nautobot_firewall_models import choices
 from nautobot_firewall_models.utils import get_default_status
+
+ADDRESS_TYPES = ["fqdn", "ip_range", "ip_address", "prefix", "device", "dynamic"]
+
+# Reverse relations from an Address Object or Address Object Group to the rules using it. PAN-OS Policy Rules and every
+# NAT Policy Rule can not render an address that only resolves per host.
+POLICY_RULE_RELATIONS = ("source_policy_rules", "destination_policy_rules")
+NAT_POLICY_RULE_RELATIONS = (
+    "original_source_nat_policy_rules",
+    "translated_source_nat_policy_rules",
+    "original_destination_nat_policy_rules",
+    "translated_destination_nat_policy_rules",
+)
+
+
+def host_relative_names(objects):
+    """Return the names of the host relative Address Objects in `objects`, looking inside any Address Object Groups."""
+    names = set()
+    for obj in objects or []:
+        if isinstance(obj, AddressObjectGroup):
+            names.update(str(i) for i in obj.address_objects.all() if i.is_host_relative)
+        elif obj.is_host_relative:
+            names.add(str(obj))
+    return sorted(names)
+
+
+def rules_refusing_host_relative(obj):
+    """Return the names of the rules that use `obj`, an Address Object or Group, and can not take host relative ones."""
+    if not obj.present_in_database:
+        return []
+    rules = set()
+    for relation in POLICY_RULE_RELATIONS:
+        rules.update(str(i) for i in getattr(obj, relation).filter(rule_type="panos"))
+    for relation in NAT_POLICY_RULE_RELATIONS:
+        rules.update(str(i) for i in getattr(obj, relation).all())
+    return sorted(rules)
+
 
 ###########################
 # Core Models
@@ -182,6 +219,20 @@ class AddressObject(PrimaryModel):
     prefix = models.ForeignKey(
         to="ipam.Prefix", on_delete=models.PROTECT, null=True, blank=True, related_name="address_objects"
     )
+    device = models.ForeignKey(
+        to="dcim.Device",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="address_objects",
+        help_text="Resolves to the primary IPs of this Device.",
+    )
+    dynamic = models.CharField(
+        choices=choices.DYNAMIC_ADDRESS_CHOICES,
+        max_length=CHARFIELD_MAX_LENGTH,
+        blank=True,
+        help_text="Resolves when rendered for a host, e.g. Subnet becomes the prefix of the host's primary IP.",
+    )
     status = StatusField(
         on_delete=models.PROTECT,
         related_name="%(app_label)s_%(class)s_related",  # e.g. dcim_device_related
@@ -196,8 +247,7 @@ class AddressObject(PrimaryModel):
 
     def get_address_info(self):
         """Method to Return the actual AddressObject type."""
-        keys = ["ip_range", "fqdn", "prefix", "ip_address"]
-        for key in keys:
+        for key in ADDRESS_TYPES:
             if getattr(self, key):
                 return (key, getattr(self, key))
         return (None, None)
@@ -213,22 +263,51 @@ class AddressObject(PrimaryModel):
 
     def clean(self, *args, **kwargs):
         """Overloads to validate attr for form verification."""
-        address_types = ["fqdn", "ip_range", "ip_address", "prefix"]
-        address_count = 0
-        for i in address_types:
-            if hasattr(self, i) and getattr(self, i) is not None:
-                address_count += 1
+        address_count = sum(1 for i in ADDRESS_TYPES if getattr(self, i, None))
         if address_count != 1:
-            raise ValidationError(f"Must specify only one address from type {address_types}, {address_count} found.")
+            raise ValidationError(f"Must specify only one address from type {ADDRESS_TYPES}, {address_count} found.")
+        if self.is_host_relative:
+            rules = set(rules_refusing_host_relative(self))
+            if self.present_in_database:
+                for group in self.address_object_groups.all():
+                    rules.update(rules_refusing_host_relative(group))
+            if rules:
+                raise ValidationError(
+                    f"Device and dynamic Address Objects only work on nftables rules, and this one is used by: "
+                    f"{', '.join(sorted(rules))}."
+                )
 
         super().clean(*args, **kwargs)
 
     @property
-    def address(self):  # pylint: disable=inconsistent-return-statements
+    def address(self):
         """Returns the assigned address object."""
-        for i in ["fqdn", "ip_range", "ip_address", "prefix"]:
-            if getattr(self, i):
-                return getattr(self, i)
+        return self.get_address_info()[1]
+
+    @property
+    def is_host_relative(self):
+        """Whether this object only has a value once rendered for a specific host, so only host firewalls can use it."""
+        return bool(self.dynamic or self.device_id)
+
+    def resolve(self, host):
+        """Return the networks this object stands for when rendered for `host`, the Device the rules are applied to.
+
+        Only Device and dynamic objects are resolved here; other objects already hold their value.
+        """
+        if self.device_id:
+            ips = [self.device.primary_ip4, self.device.primary_ip6]
+            networks = [IPNetwork(ip.host) for ip in ips if ip]
+            if not networks:
+                raise ValidationError(f"{self}: Device {self.device} has no primary IP.")
+            return networks
+        if self.dynamic == "subnet":
+            ips = [ip for ip in (host.primary_ip4, host.primary_ip6) if ip]
+            if not ips:
+                raise ValidationError(f"{self}: Device {host} has no primary IP.")
+            if missing := [str(ip) for ip in ips if not ip.parent]:
+                raise ValidationError(f"{self}: no Prefix contains {', '.join(missing)} on Device {host}.")
+            return [ip.parent.prefix for ip in ips]
+        raise ValueError(f"{self} is not a host relative address object.")
 
 
 @extras_features(
@@ -272,3 +351,15 @@ class AddressObjectGroup(PrimaryModel):
     def __str__(self):
         """Stringify instance."""
         return self.name
+
+    def validate_address_objects(self, address_objects):
+        """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses this group."""
+        names = host_relative_names(address_objects)
+        rules = rules_refusing_host_relative(self) if names else []
+        if rules:
+            raise ValidationError(
+                {
+                    "address_objects": f"{', '.join(names)} only work on nftables rules, and this group is used by: "
+                    f"{', '.join(rules)}."
+                }
+            )

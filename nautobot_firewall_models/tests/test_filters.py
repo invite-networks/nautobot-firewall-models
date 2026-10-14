@@ -200,7 +200,11 @@ class PolicyRuleTestCase(FilterTestCases.FilterTestCase):
         fixtures.assign_policies()
         # A rule in a third band, outside every Policy, so each band filter matches a strict subset of rules.
         models.PolicyRule.objects.create(
-            name="Unassigned", action="allow", band=models.PolicyBand.objects.get(name="Universal"), position="header"
+            rule_type="panos",
+            name="Unassigned",
+            action="allow",
+            band=models.PolicyBand.objects.get(name="Universal"),
+            position="header",
         )
         for group in DynamicGroup.objects.all():
             group.update_cached_members()

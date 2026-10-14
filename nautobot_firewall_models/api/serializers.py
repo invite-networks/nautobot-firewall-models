@@ -1,9 +1,18 @@
 """API serializers for nautobot_firewall_models."""
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from nautobot.apps.api import NautobotModelSerializer, TaggedModelSerializerMixin, ValidatedModelSerializer
 from rest_framework import serializers
 
 from nautobot_firewall_models import models
+
+
+def run_model_check(check, *args):
+    """Run a model validation function and report its errors the way the REST API expects."""
+    try:
+        check(*args)
+    except DjangoValidationError as e:
+        raise serializers.ValidationError(e.message_dict) from e
 
 
 class IPRangeSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):  # pylint: disable=too-many-ancestors
@@ -77,6 +86,12 @@ class AddressObjectGroupSerializer(NautobotModelSerializer, TaggedModelSerialize
 
         model = models.AddressObjectGroup
         fields = "__all__"
+
+    def validate(self, attrs):
+        """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses the group."""
+        if self.instance and "address_objects" in attrs:
+            run_model_check(self.instance.validate_address_objects, attrs["address_objects"])
+        return super().validate(attrs)
 
 
 class ApplicationObjectSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
@@ -194,6 +209,18 @@ class PolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         model = models.PolicyRule
         fields = "__all__"
 
+    def validate(self, attrs):
+        """Check the related objects against the rule type, using the saved values for fields a PATCH leaves out."""
+        rule_type = self.instance.rule_type if self.instance else attrs.get("rule_type")
+        relations = {}
+        for field in (*models.PolicyRule.PANOS_ONLY_RELATIONS, *models.PolicyRule.ADDRESS_RELATIONS):
+            if field in attrs:
+                relations[field] = attrs[field]
+            elif self.instance:
+                relations[field] = getattr(self.instance, field).all()
+        run_model_check(models.PolicyRule.validate_relations, rule_type, relations)
+        return super().validate(attrs)
+
 
 class PolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """Policy Serializer."""
@@ -203,6 +230,12 @@ class PolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
 
         model = models.Policy
         fields = "__all__"
+
+    def validate(self, attrs):
+        """Refuse Policy Rules of another type."""
+        rule_type = self.instance.rule_type if self.instance else attrs.get("rule_type")
+        run_model_check(models.Policy.validate_policy_rules, rule_type, attrs.get("policy_rules"))
+        return super().validate(attrs)
 
 
 class NATPolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
@@ -216,6 +249,11 @@ class NATPolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixi
 
         model = models.NATPolicyRule
         fields = "__all__"
+
+    def validate(self, attrs):
+        """Refuse host relative Address Objects."""
+        run_model_check(models.NATPolicyRule.validate_relations, attrs)
+        return super().validate(attrs)
 
 
 class NATPolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):

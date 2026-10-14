@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Add a new Policy Rule{% endblock title %}
+
+{% block content %}
+    <div class="row justify-content-center">
+        <div class="col-lg-6 col-md-8">
+            <div class="card">
+                <div class="card-header"><strong>Rule Type</strong></div>
+                <div class="card-body">
+                    <p>Choose the platform this rule is written for. It decides which fields the rule can use and cannot be changed later.</p>
+                    <div class="d-flex gap-8">
+                        {% for option in options %}
+                            <a href="{{ option.url }}" class="btn btn-primary">{{ option.label }}</a>
+                        {% endfor %}
+                        <a href="{{ return_url }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

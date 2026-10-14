@@ -1,6 +1,7 @@
 """Models for the Firewall app."""
 # pylint: disable=duplicate-code, too-many-lines
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
 from nautobot.core.models.generics import BaseModel, PrimaryModel
@@ -8,6 +9,7 @@ from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models import choices
+from nautobot_firewall_models.models.address import host_relative_names
 from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
@@ -61,10 +63,35 @@ class PolicyRule(PrimaryModel):
     """
     A PolicyRule is a the equivalent of a single in a firewall policy or access list.
 
-    Firewall policies are typically made up of several individual rules.
+    Firewall policies are typically made up of several individual rules. The rule type decides which platform the rule
+    is written for and so which fields it may use.
     """
 
+    # Relations only a PAN-OS rule can express; an nftables host firewall has no zones, users or App-ID.
+    PANOS_ONLY_RELATIONS = (
+        "source_users",
+        "source_user_groups",
+        "source_zones",
+        "source_zone_groups",
+        "destination_zones",
+        "destination_zone_groups",
+        "applications",
+        "application_groups",
+    )
+    ADDRESS_RELATIONS = (
+        "source_addresses",
+        "source_address_groups",
+        "destination_addresses",
+        "destination_address_groups",
+    )
+
     name = models.CharField(max_length=CHARFIELD_MAX_LENGTH)
+    rule_type = models.CharField(
+        choices=choices.RULE_TYPE_CHOICES,
+        max_length=CHARFIELD_MAX_LENGTH,
+        verbose_name="Rule Type",
+        help_text="The platform the rule is written for. It cannot be changed once the rule exists.",
+    )
     source_users = models.ManyToManyField(
         blank=True, to="nautobot_firewall_models.UserObject", related_name="policy_rules", verbose_name="Source Users"
     )
@@ -165,20 +192,34 @@ class PolicyRule(PrimaryModel):
     request_id = models.CharField(max_length=CHARFIELD_MAX_LENGTH, blank=True, verbose_name="Request ID")
     description = models.CharField(max_length=1024, blank=True)
     band = models.ForeignKey(
-        to="nautobot_firewall_models.PolicyBand", on_delete=models.PROTECT, related_name="policy_rules"
+        to="nautobot_firewall_models.PolicyBand",
+        on_delete=models.PROTECT,
+        related_name="policy_rules",
+        null=True,
+        blank=True,
+        help_text="Required on PAN-OS rules.",
     )
     position = models.CharField(
         choices=choices.POSITION_CHOICES,
         max_length=CHARFIELD_MAX_LENGTH,
-        help_text="Header rules come before the band's local rules on the firewall, Closer rules after.",
+        blank=True,
+        help_text="PAN-OS only. Header rules come before the band's local rules on the firewall, Closer rules after.",
+    )
+    chain = models.CharField(
+        choices=choices.CHAIN_CHOICES,
+        max_length=CHARFIELD_MAX_LENGTH,
+        blank=True,
+        help_text="Required on nftables rules.",
     )
     index = models.PositiveSmallIntegerField(
         null=True, blank=True, help_text="Orders rules within a band and position. Rules may share an index."
     )
 
     clone_fields = [
+        "rule_type",
         "band",
         "position",
+        "chain",
         "source_users",
         "source_user_groups",
         "source_addresses",
@@ -202,10 +243,12 @@ class PolicyRule(PrimaryModel):
     class Meta:
         """Meta class."""
 
-        # Band, then Header before Closer, then index, then name so rules sharing an index keep a stable order.
+        # Band, then Header before Closer, then chain, then index, then name so rules sharing an index keep a stable
+        # order. nftables rules have no band and sort after PAN-OS rules.
         ordering = [
-            "band__index",
+            models.F("band__index").asc(nulls_last=True),
             models.Case(models.When(position="header", then=0), default=1),
+            "chain",
             models.F("index").asc(nulls_last=True),
             "name",
         ]
@@ -215,8 +258,10 @@ class PolicyRule(PrimaryModel):
         """Convience method to convert to more consumable dictionary."""
         row = {}
         row["rule"] = self
+        row["rule_type"] = self.rule_type
         row["band"] = self.band
         row["position"] = self.position
+        row["chain"] = self.chain
         row["source_address_groups"] = self.source_address_groups.all()
         row["source_addresses"] = self.source_addresses.all()
         row["source_users"] = self.source_users.all()
@@ -238,6 +283,55 @@ class PolicyRule(PrimaryModel):
         row["status"] = self.status
         row["request_id"] = self.request_id
         return row
+
+    def clean(self):
+        """Require the fields the rule type needs and refuse the ones it cannot use."""
+        super().clean()
+        errors = {}
+        if self.rule_type == "panos":
+            if not self.band_id:
+                errors["band"] = "PAN-OS rules need a Policy Band."
+            if not self.position:
+                errors["position"] = "PAN-OS rules need a position."
+            if self.chain:
+                errors["chain"] = "Only nftables rules have a chain."
+        elif self.rule_type == "nftables":
+            if not self.chain:
+                errors["chain"] = "nftables rules need a chain."
+            if self.band_id:
+                errors["band"] = "Only PAN-OS rules have a Policy Band."
+            if self.position:
+                errors["position"] = "Only PAN-OS rules have a position."
+            if self.action == "remark":
+                errors["action"] = "nftables rules cannot be remarks."
+        if self.present_in_database:
+            saved_type = PolicyRule.objects.filter(pk=self.pk).values_list("rule_type", flat=True).first()
+            if saved_type and saved_type != self.rule_type:
+                errors["rule_type"] = "The rule type cannot be changed once the rule exists."
+        if errors:
+            raise ValidationError(errors)
+
+    @classmethod
+    def validate_relations(cls, rule_type, relations):
+        """Refuse related objects that the rule type cannot render.
+
+        `relations` maps a many-to-many field name to the objects being assigned. Forms and the API call this, since
+        many-to-many values are not on the instance when `clean()` runs.
+        """
+        errors = {}
+        if rule_type == "nftables":
+            for field in cls.PANOS_ONLY_RELATIONS:
+                if relations.get(field):
+                    errors[field] = "Only PAN-OS rules can use this."
+        elif rule_type == "panos":
+            for field in cls.ADDRESS_RELATIONS:
+                if names := host_relative_names(relations.get(field)):
+                    errors[field] = (
+                        f"Device and dynamic Address Objects resolve per host and only work on nftables rules: "
+                        f"{', '.join(names)}."
+                    )
+        if errors:
+            raise ValidationError(errors)
 
     def expanded_source_zones(self):
         """Return the source Zones with every source ZoneGroup expanded into its member Zones."""
@@ -282,6 +376,12 @@ class Policy(PrimaryModel):
         blank=True,
     )
     name = models.CharField(max_length=CHARFIELD_MAX_LENGTH, unique=True)
+    rule_type = models.CharField(
+        choices=choices.RULE_TYPE_CHOICES,
+        max_length=CHARFIELD_MAX_LENGTH,
+        verbose_name="Rule Type",
+        help_text="Every rule in the Policy must be of this type. It cannot be changed once the Policy exists.",
+    )
     policy_rules = models.ManyToManyField(
         to=PolicyRule, blank=True, related_name="policies", verbose_name="Policy Rules"
     )
@@ -317,6 +417,24 @@ class Policy(PrimaryModel):
 
         ordering = ["name"]
         verbose_name_plural = "Policies"
+
+    def clean(self):
+        """Keep the rule type of a saved Policy."""
+        super().clean()
+        if self.present_in_database:
+            saved_type = Policy.objects.filter(pk=self.pk).values_list("rule_type", flat=True).first()
+            if saved_type and saved_type != self.rule_type:
+                raise ValidationError({"rule_type": "The rule type cannot be changed once the Policy exists."})
+
+    @staticmethod
+    def validate_policy_rules(rule_type, policy_rules):
+        """Refuse Policy Rules whose type differs from the Policy's."""
+        if not rule_type:
+            return
+        if mismatched := sorted(str(i) for i in policy_rules or [] if i.rule_type != rule_type):
+            raise ValidationError(
+                {"policy_rules": f"Only {rule_type} rules can be added to this Policy: {', '.join(mismatched)}."}
+            )
 
     @property
     def policy_details(self):

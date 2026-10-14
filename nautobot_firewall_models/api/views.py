@@ -1,6 +1,11 @@
 """API views for nautobot_firewall_models."""
 
+from django.http import Http404
+from drf_spectacular.utils import extend_schema
 from nautobot.apps.api import ModelViewSet, NautobotModelViewSet
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from nautobot_firewall_models import filters, models
 from nautobot_firewall_models.api import serializers
@@ -177,3 +182,83 @@ class NATPolicyDynamicGroupM2MViewSet(ModelViewSet):
     queryset = models.NATPolicyDynamicGroupM2M.objects.all()
     serializer_class = serializers.NATPolicyDynamicGroupM2MSerializer
     filterset_class = filters.NATPolicyDynamicGroupM2MFilterSet
+
+
+class GroupedObjectsView(APIView):
+    """Search objects and their groups together, for the combined pickers on the rule forms.
+
+    Results are groups first, then objects, each with an `id` of `group:<pk>` or `object:<pk>` and a `group` heading
+    that the picker shows them under. Only what the user may view is returned.
+    """
+
+    permission_classes = [IsAuthenticated]
+    # Kind, mapped to (group model, group filterset) and (object model, object filterset).
+    KINDS = {
+        "zones": ((models.ZoneGroup, filters.ZoneGroupFilterSet), (models.Zone, filters.ZoneFilterSet)),
+        "addresses": (
+            (models.AddressObjectGroup, filters.AddressObjectGroupFilterSet),
+            (models.AddressObject, filters.AddressObjectFilterSet),
+        ),
+        "services": (
+            (models.ServiceObjectGroup, filters.ServiceObjectGroupFilterSet),
+            (models.ServiceObject, filters.ServiceObjectFilterSet),
+        ),
+        "users": (
+            (models.UserObjectGroup, filters.UserObjectGroupFilterSet),
+            (models.UserObject, filters.UserObjectFilterSet),
+        ),
+        "applications": (
+            (models.ApplicationObjectGroup, filters.ApplicationObjectGroupFilterSet),
+            (models.ApplicationObject, filters.ApplicationObjectFilterSet),
+        ),
+    }
+    MAX_LIMIT = 1000
+
+    @extend_schema(exclude=True)
+    def get(self, request, kind):
+        """Return one page of groups and objects matching the `q` search."""
+        if kind not in self.KINDS:
+            raise Http404
+        try:
+            limit = min(int(request.query_params.get("limit", 50)), self.MAX_LIMIT)
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except ValueError:
+            limit, offset = 50, 0
+        search = request.query_params.get("q")
+
+        sources = []
+        for prefix, (model, filterset) in zip(("group", "object"), self.KINDS[kind]):
+            queryset = model.objects.restrict(request.user, "view")
+            if search:
+                queryset = filterset({"q": search}, queryset).qs
+            sources.append((prefix, model, queryset, queryset.count()))
+        total = sum(count for *_rest, count in sources)
+
+        # Page through the groups, then the objects, as if they were one list.
+        results = []
+        start = offset
+        for prefix, model, queryset, count in sources:
+            if start >= count:
+                start -= count
+                continue
+            heading = {"name": model._meta.verbose_name_plural.title()}
+            for obj in queryset[start : start + limit - len(results)]:
+                results.append({"id": f"{prefix}:{obj.pk}", "name": str(obj), "display": str(obj), "group": heading})
+            start = 0
+            if len(results) >= limit:
+                break
+
+        def page_url(page_offset):
+            query = request.query_params.copy()
+            query["offset"] = page_offset
+            query["limit"] = limit
+            return request.build_absolute_uri(f"{request.path}?{query.urlencode()}")
+
+        return Response(
+            {
+                "count": total,
+                "next": page_url(offset + limit) if offset + limit < total else None,
+                "previous": page_url(max(offset - limit, 0)) if offset > 0 else None,
+                "results": results,
+            }
+        )

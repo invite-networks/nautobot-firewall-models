@@ -197,6 +197,7 @@ class AddressObjectAPIViewTest(APIViewTestCases.APIViewTestCase):
 
     model = models.AddressObject
     bulk_update_data = {"description": "test update description"}
+    choices_fields = ["dynamic"]
 
     @classmethod
     def setUpTestData(cls):
@@ -381,7 +382,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
 
     model = models.PolicyRule
     bulk_update_data = {"log": False}
-    choices_fields = ["action", "position"]
+    choices_fields = ["action", "position", "rule_type", "chain"]
 
     @classmethod
     def setUpTestData(cls):
@@ -392,9 +393,15 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
         src_addr = models.AddressObject.objects.first()
         dest_addr = models.AddressObject.objects.last()
         svc = models.ServiceObject.objects.first()
-        models.PolicyRule.objects.create(band=band, position="header", name="deleteableobj1", action="deny", index=1)
-        models.PolicyRule.objects.create(band=band, position="header", name="deleteableobj2", action="deny", index=1)
-        models.PolicyRule.objects.create(band=band, position="header", name="deleteableobj3", action="deny", index=1)
+        models.PolicyRule.objects.create(
+            rule_type="panos", band=band, position="header", name="deleteableobj1", action="deny", index=1
+        )
+        models.PolicyRule.objects.create(
+            rule_type="panos", band=band, position="header", name="deleteableobj2", action="deny", index=1
+        )
+        models.PolicyRule.objects.create(
+            rule_type="panos", band=band, position="header", name="deleteableobj3", action="deny", index=1
+        )
         cls.create_data = [
             {
                 # pylint: disable=R0801
@@ -405,6 +412,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "log": True,
                 "destination_services": [svc.id],
                 "name": "test rule 1",
+                "rule_type": "panos",
                 "band": band.id,
                 "position": "header",
             },
@@ -416,6 +424,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "log": False,
                 "destination_services": [svc.id],
                 "name": "test rule 2",
+                "rule_type": "panos",
                 "band": band.id,
                 "position": "closer",
             },
@@ -427,19 +436,20 @@ class PolicyAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewTest
 
     model = models.Policy
     bulk_update_data = {"description": "test update description"}
+    choices_fields = ["rule_type"]
 
     @classmethod
     def setUpTestData(cls):
         """Create test data for API calls."""
         fixtures.create_policy()
         pol_rule = models.PolicyRule.objects.first()
-        models.Policy.objects.create(name="deleteableobj1")
-        models.Policy.objects.create(name="deleteableobj2")
-        models.Policy.objects.create(name="deleteableobj3")
+        models.Policy.objects.create(rule_type="panos", name="deleteableobj1")
+        models.Policy.objects.create(rule_type="panos", name="deleteableobj2")
+        models.Policy.objects.create(rule_type="panos", name="deleteableobj3")
 
         cls.create_data = [
-            {"name": "test 1", "policy_rules": [pol_rule.id]},
-            {"name": "test 2", "policy_rules": [pol_rule.id], "description": "Test desc"},
+            {"name": "test 1", "rule_type": "panos", "policy_rules": [pol_rule.id]},
+            {"name": "test 2", "rule_type": "panos", "policy_rules": [pol_rule.id], "description": "Test desc"},
         ]
 
 
@@ -552,7 +562,7 @@ class ExpandedZonesAPITest(APITestCase):
         wan = models.Zone.objects.get(name="WAN")
         band, _, _ = fixtures.create_policy_band()
         cls.policy_rule = models.PolicyRule.objects.create(
-            name="expanded", action="allow", band=band, position="header"
+            rule_type="panos", name="expanded", action="allow", band=band, position="header"
         )
         cls.policy_rule.source_zones.set([wan])
         cls.policy_rule.source_zone_groups.set([outside])
@@ -670,3 +680,215 @@ class ZoneDevicesAPITest(APITestCase):
         self.assertNotIn("errors", response.data)
         names = sorted(dev["name"] for dev in response.data["data"]["zones"][0]["devices"])
         self.assertEqual(names, ["DFW02-WAN00", "HOU02-WAN00"])
+
+
+class RuleTypeAPITest(APITestCase):
+    """Test that the PolicyRule API applies the rule type checks."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a band, a zone, a dynamic Address Object and a group that holds it."""
+        cls.band, _, _ = fixtures.create_policy_band()
+        cls.zone = models.Zone.objects.create(name="trust")
+        cls.subnet = models.AddressObject.objects.create(name="host subnet", dynamic="subnet")
+        cls.url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-list")
+
+    def setUp(self):
+        """Grant access to Policy Rules."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_policyrule",
+            "nautobot_firewall_models.change_policyrule",
+            "nautobot_firewall_models.view_policyrule",
+            "nautobot_firewall_models.view_addressobject",
+            "nautobot_firewall_models.view_zone",
+            "nautobot_firewall_models.view_policyband",
+        )
+
+    def _post(self, **data):
+        return self.client.post(self.url, {"name": "rule", "action": "allow", **data}, format="json", **self.header)
+
+    def test_create_nftables_rule_with_dynamic_address(self):
+        """An nftables rule is created with a chain and a dynamic Address Object."""
+        response = self._post(rule_type="nftables", chain="input", source_addresses=[str(self.subnet.pk)])
+
+        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
+        self.assertEqual(response.data["rule_type"], "nftables")
+
+    def test_nftables_rule_with_zone_is_refused(self):
+        """Zones are refused on nftables rules."""
+        response = self._post(rule_type="nftables", chain="input", source_zones=[str(self.zone.pk)])
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("source_zones", response.data)
+
+    def test_panos_rule_with_dynamic_address_is_refused(self):
+        """Host relative addresses are refused on PAN-OS rules."""
+        response = self._post(
+            rule_type="panos", band=str(self.band.pk), position="header", destination_addresses=[str(self.subnet.pk)]
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("destination_addresses", response.data)
+
+    def test_patch_keeps_saved_relations_in_the_check(self):
+        """A PATCH that leaves zones out still sees the saved rule type."""
+        rule = models.PolicyRule.objects.create(name="ssh", action="allow", rule_type="nftables", chain="input")
+        url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-detail", kwargs={"pk": rule.pk})
+
+        response = self.client.patch(url, {"source_zones": [str(self.zone.pk)]}, format="json", **self.header)
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+
+    def test_rule_type_can_not_change(self):
+        """The rule type of a saved rule can not be changed."""
+        rule = models.PolicyRule.objects.create(name="ssh", action="allow", rule_type="nftables", chain="input")
+        url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-detail", kwargs={"pk": rule.pk})
+
+        response = self.client.patch(
+            url,
+            {"rule_type": "panos", "chain": "", "band": str(self.band.pk), "position": "header"},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+
+
+class HostRelativeAndPolicyTypeAPITest(APITestCase):
+    """Test the REST API errors for host relative Address Objects and Policy rule types."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a PAN-OS rule using a group, an nftables rule and a dynamic Address Object."""
+        band, _, _ = fixtures.create_policy_band()
+        cls.panos_rule = models.PolicyRule.objects.create(
+            name="pan", action="allow", rule_type="panos", band=band, position="header"
+        )
+        cls.nft_rule = models.PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
+        cls.group = models.AddressObjectGroup.objects.create(name="panos group")
+        cls.panos_rule.source_address_groups.add(cls.group)
+        cls.subnet = models.AddressObject.objects.create(name="host subnet", dynamic="subnet")
+
+    def setUp(self):
+        """Grant access to Policies, NAT Policy Rules and Address Object Groups."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_policy",
+            "nautobot_firewall_models.add_natpolicyrule",
+            "nautobot_firewall_models.change_addressobjectgroup",
+            "nautobot_firewall_models.view_addressobjectgroup",
+            "nautobot_firewall_models.view_addressobject",
+            "nautobot_firewall_models.view_policyrule",
+        )
+
+    def _url(self, route, pk=None):
+        if pk:
+            return reverse(f"plugins-api:nautobot_firewall_models-api:{route}-detail", kwargs={"pk": pk})
+        return reverse(f"plugins-api:nautobot_firewall_models-api:{route}-list")
+
+    def test_policy_refuses_rules_of_another_type(self):
+        """Creating a PAN-OS Policy with an nftables rule is refused."""
+        response = self.client.post(
+            self._url("policy"),
+            {"name": "mixed", "rule_type": "panos", "policy_rules": [str(self.nft_rule.pk)]},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("policy_rules", response.data)
+
+    def test_policy_requires_a_rule_type(self):
+        """There is no default rule type on a Policy."""
+        response = self.client.post(self._url("policy"), {"name": "untyped"}, format="json", **self.header)
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("rule_type", response.data)
+
+    def test_nat_rule_refuses_host_relative_address(self):
+        """Creating a NAT rule with a dynamic Address Object is refused."""
+        response = self.client.post(
+            self._url("natpolicyrule"),
+            {"name": "nat", "original_source_addresses": [str(self.subnet.pk)]},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("original_source_addresses", response.data)
+
+    def test_group_used_by_panos_rule_refuses_host_relative_address(self):
+        """Adding a dynamic Address Object to a group a PAN-OS rule uses is refused."""
+        response = self.client.patch(
+            self._url("addressobjectgroup", self.group.pk),
+            {"address_objects": [str(self.subnet.pk)]},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("address_objects", response.data)
+
+
+class GroupedObjectsAPITest(APITestCase):
+    """Test the API the combined pickers search: groups and objects together, limited to what the user may view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create two Zone Groups and three Zones."""
+        cls.groups = [models.ZoneGroup.objects.create(name=name) for name in ("inside", "outside")]
+        cls.zones = [models.Zone.objects.create(name=name) for name in ("dmz", "trust", "untrust")]
+
+    def setUp(self):
+        """Grant view access to Zones and Zone Groups."""
+        super().setUp()
+        self.add_permissions("nautobot_firewall_models.view_zone", "nautobot_firewall_models.view_zonegroup")
+
+    def _get(self, kind="zones", **params):
+        url = reverse("plugins-api:nautobot_firewall_models-api:grouped-objects", kwargs={"kind": kind})
+        return self.client.get(url, params, **self.header)
+
+    def test_groups_come_before_objects_under_headings(self):
+        """Groups are listed first, then objects, each under its own heading."""
+        response = self._get()
+
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 5)
+        self.assertEqual(
+            [(i["id"], i["group"]["name"]) for i in response.data["results"]],
+            [(f"group:{i.pk}", "Zone Groups") for i in self.groups] + [(f"object:{i.pk}", "Zones") for i in self.zones],
+        )
+
+    def test_search(self):
+        """The q parameter searches groups and objects."""
+        response = self._get(q="out")
+
+        self.assertEqual([i["name"] for i in response.data["results"]], ["outside"])
+
+    def test_pages_across_groups_and_objects(self):
+        """Paging treats the groups and objects as one list."""
+        first = self._get(limit=3)
+        second = self._get(limit=3, offset=3)
+
+        self.assertEqual([i["name"] for i in first.data["results"]], ["inside", "outside", "dmz"])
+        self.assertIsNotNone(first.data["next"])
+        self.assertEqual([i["name"] for i in second.data["results"]], ["trust", "untrust"])
+        self.assertIsNone(second.data["next"])
+
+    def test_only_returns_what_the_user_may_view(self):
+        """Without permission to view Zone Groups, only Zones are returned."""
+        ObjectPermission.objects.filter(object_types__model="zonegroup").delete()
+
+        response = self._get()
+
+        self.assertEqual({i["group"]["name"] for i in response.data["results"]}, {"Zones"})
+
+    def test_unknown_kind(self):
+        """An unknown kind is not found."""
+        self.assertHttpStatus(self._get(kind="nope"), drf_status.HTTP_404_NOT_FOUND)
+
+    def test_every_kind_responds(self):
+        """Every picker kind has a working search."""
+        for kind in ("zones", "addresses", "services", "users", "applications"):
+            self.assertHttpStatus(self._get(kind=kind), drf_status.HTTP_200_OK)

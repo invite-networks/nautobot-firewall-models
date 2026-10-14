@@ -9,6 +9,8 @@ You can think of a policy as roughly corresponding to access lists or policies o
 ## Attributes
 
 * Name (string)
+* Rule Type (string, choice of panos nftables)
+    * Every Policy Rule in the Policy must be of this type. It cannot be changed once the Policy exists.
 * Description (optional, string)
 * Policy Rules (M2M to PolicyRule via PolicyRuleM2M)
 * Assigned Devices (M2M to Device via PolicyDeviceM2M)

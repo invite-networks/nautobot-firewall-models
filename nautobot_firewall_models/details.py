@@ -203,7 +203,14 @@ nat_policy = ui.ObjectDetailContent(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed, needs additional_fields=["assigned_devices__all", "assigned_dynamic_groups__all"]
-            fields=["name", "description", "assigned_devices__all", "assigned_dynamic_groups__all", "tenant", "status"],
+            fields=[
+                "name",
+                "description",
+                "assigned_devices__all",
+                "assigned_dynamic_groups__all",
+                "tenant",
+                "status",
+            ],
             key_transforms={"assigned_devices__all": "Devices", "assigned_dynamic_groups__all": "Dynamic Groups"},
         ),
     ),
@@ -270,7 +277,15 @@ policy = ui.ObjectDetailContent(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed, needs additional_fields=["assigned_devices__all", "assigned_dynamic_groups__all"]
-            fields=["name", "description", "assigned_devices__all", "assigned_dynamic_groups__all", "tenant", "status"],
+            fields=[
+                "name",
+                "rule_type",
+                "description",
+                "assigned_devices__all",
+                "assigned_dynamic_groups__all",
+                "tenant",
+                "status",
+            ],
             key_transforms={"assigned_devices__all": "Devices", "assigned_dynamic_groups__all": "Dynamic Groups"},
         ),
     ),
@@ -338,7 +353,7 @@ policy_rule = ui.ObjectDetailContent(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed, needs additional_fields=["ip_addresses"]
-            fields=["band", "position", "index", "description", "policies__all", "status"],
+            fields=["rule_type", "band", "position", "chain", "index", "description", "policies__all", "status"],
             key_transforms={"policies__all": "Assigned Policies"},
         ),
         ui.Panel(

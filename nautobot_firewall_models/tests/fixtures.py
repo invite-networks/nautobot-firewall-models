@@ -206,6 +206,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     addr_grp1, addr_grp2, addr_grp3 = create_addr_group()
     status = Status.objects.get(name="Active")
     pol_rule1, _ = PolicyRule.objects.get_or_create(
+        rule_type="panos",
         action="deny",
         log=True,
         name="Policy Rule 1",
@@ -228,6 +229,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule1.applications.set([app1])
     pol_rule1.application_groups.set([app_grp1])
     pol_rule2, _ = PolicyRule.objects.get_or_create(
+        rule_type="panos",
         action="allow",
         log=True,
         name="Policy Rule 2",
@@ -251,6 +253,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule2.applications.set([app2])
     pol_rule2.application_groups.set([app_grp2])
     pol_rule3, _ = PolicyRule.objects.get_or_create(
+        rule_type="panos",
         action="drop",
         log=True,
         name="Policy Rule 3",
@@ -274,6 +277,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule3.applications.set([app2, app3])
     pol_rule3.application_groups.set([app_grp1, app_grp2, app_grp3])
     pol_rule4, _ = PolicyRule.objects.get_or_create(
+        rule_type="panos",
         name="END OF ACCESS LIST",
         action="remark",
         log=False,
@@ -283,7 +287,14 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
         index=99,
     )
     pol_rule5, _ = PolicyRule.objects.get_or_create(
-        name="DENY ALL", action="deny", log=False, request_id="req5", band=band3, position="closer", index=100
+        rule_type="panos",
+        name="DENY ALL",
+        action="deny",
+        log=False,
+        request_id="req5",
+        band=band3,
+        position="closer",
+        index=100,
     )
     return pol_rule1, pol_rule2, pol_rule3, pol_rule4, pol_rule5
 
@@ -295,11 +306,11 @@ def create_policy():
     tenant_group, _ = TenantGroup.objects.get_or_create(name="ABC Holding Corp")
     tenant1, _ = Tenant.objects.get_or_create(name="ABC LLC", tenant_group=tenant_group)
     tenant2, _ = Tenant.objects.get_or_create(name="XYZ LLC")
-    pol1, _ = Policy.objects.get_or_create(name="Policy 1", status=status)
+    pol1, _ = Policy.objects.get_or_create(rule_type="panos", name="Policy 1", status=status)
     pol1.policy_rules.set([pol_rule1])
-    pol2, _ = Policy.objects.get_or_create(name="Policy 2", status=status, tenant=tenant2)
+    pol2, _ = Policy.objects.get_or_create(rule_type="panos", name="Policy 2", status=status, tenant=tenant2)
     pol2.policy_rules.set([pol_rule1, pol_rule2])
-    pol3, _ = Policy.objects.get_or_create(name="Policy 3", status=status, tenant=tenant1)
+    pol3, _ = Policy.objects.get_or_create(rule_type="panos", name="Policy 3", status=status, tenant=tenant1)
     pol3.policy_rules.set([pol_rule1, pol_rule2, pol_rule3, pol_rule4, pol_rule5])
     return pol1, pol2, pol3
 
@@ -477,3 +488,22 @@ def create_sample_env():
     addr_obj4.fqdn = None
     addr_obj4.prefix = prefix
     addr_obj4.validated_save()
+
+
+def create_linux_host(name="web01", address="10.0.0.10"):
+    """Creates a Linux server Device whose primary IPv4 sits in 10.0.0.0/24."""
+    status = Status.objects.get(name="Active")
+    location_type, _ = LocationType.objects.get_or_create(name="Data Center")
+    location, _ = Location.objects.get_or_create(name="DC1", location_type=location_type, status=status)
+    manufacturer, _ = Manufacturer.objects.get_or_create(name="Generic")
+    device_type, _ = DeviceType.objects.get_or_create(manufacturer=manufacturer, model="Linux Server")
+    role, _ = Role.objects.get_or_create(name="Server")
+    role.content_types.add(ContentType.objects.get_for_model(Device))
+    namespace, _ = Namespace.objects.get_or_create(name="global")
+    Prefix.objects.get_or_create(network="10.0.0.0", prefix_length=24, namespace=namespace, status=status)
+    host, _ = Device.objects.get_or_create(
+        name=name, role=role, device_type=device_type, location=location, status=status
+    )
+    host.primary_ip4, _ = IPAddr.objects.get_or_create(address=f"{address}/24", namespace=namespace, status=status)
+    host.save()
+    return host

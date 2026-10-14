@@ -4,7 +4,7 @@
 # pylint: disable=invalid-name
 # pylint: disable=duplicate-code
 from django.urls import reverse
-from nautobot.apps.testing import ViewTestCases, post_data
+from nautobot.apps.testing import TestCase, ViewTestCases, post_data
 from nautobot.extras.models import Status
 from nautobot.users.models import ObjectPermission
 
@@ -318,6 +318,11 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     model = PolicyRule
     bulk_edit_data = {"description": "bulk test update description"}
 
+    def _get_url(self, action, instance=None):
+        """Open the PAN-OS form directly, since Add without a rule type shows the type chooser instead."""
+        url = super()._get_url(action, instance)
+        return f"{url}?rule_type=panos" if action == "add" else url
+
     @classmethod
     def setUpTestData(cls):
         """Create test data for API calls."""
@@ -328,27 +333,34 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         dest_addr = AddressObject.objects.last()
         status = Status.objects.get(name="Active").id
         svc = ServiceObject.objects.first()
-        PolicyRule.objects.create(band=band, position="header", name="deleteableobj1", action="deny", index=1)
-        PolicyRule.objects.create(band=band, position="header", name="deleteableobj2", action="deny", index=1)
-        PolicyRule.objects.create(band=band, position="header", name="deleteableobj3", action="deny", index=1)
+        PolicyRule.objects.create(
+            rule_type="panos", band=band, position="header", name="deleteableobj1", action="deny", index=1
+        )
+        PolicyRule.objects.create(
+            rule_type="panos", band=band, position="header", name="deleteableobj2", action="deny", index=1
+        )
+        PolicyRule.objects.create(
+            rule_type="panos", band=band, position="header", name="deleteableobj3", action="deny", index=1
+        )
         cls.form_data = {
             # pylint: disable=R0801
             "band": band.id,
             "position": "header",
-            "source_users": [src_usr.id],
-            "source_addresses": [src_addr.id],
-            "destination_addresses": [dest_addr.id],
+            # The form takes objects and their groups through one combined picker per field.
+            "source_users_and_groups": [f"object:{src_usr.id}"],
+            "source_addresses_and_groups": [f"object:{src_addr.id}"],
+            "destination_addresses_and_groups": [f"object:{dest_addr.id}"],
             "action": "deny",
             "log": True,
-            "service": [svc.id],
+            "destination_services_and_groups": [f"object:{svc.id}"],
             "name": "test rule",
             "status": status,
         }
         cls.csv_data = (
-            "name,action,band,position,index,status",
-            "csvobj1,deny,Global Deny,header,1,Active",
-            "csvobj2,deny,Global Deny,header,2,Active",
-            "csvobj3,deny,Global Deny,closer,3,Active",
+            "name,rule_type,action,band,position,index,status",
+            "csvobj1,panos,deny,Global Deny,header,1,Active",
+            "csvobj2,panos,deny,Global Deny,header,2,Active",
+            "csvobj3,panos,deny,Global Deny,closer,3,Active",
         )
 
 
@@ -364,20 +376,21 @@ class PolicyUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         fixtures.create_policy()
         pol_rule = PolicyRule.objects.first()
         status = Status.objects.get(name="Active").id
-        Policy.objects.create(name="deleteableobj1")
-        Policy.objects.create(name="deleteableobj2")
-        Policy.objects.create(name="deleteableobj3")
+        Policy.objects.create(rule_type="panos", name="deleteableobj1")
+        Policy.objects.create(rule_type="panos", name="deleteableobj2")
+        Policy.objects.create(rule_type="panos", name="deleteableobj3")
         cls.form_data = {
             "name": "test 2",
+            "rule_type": "panos",
             "policy_rules": [pol_rule.id],
             "description": "Test desc",
             "status": status,
         }
         cls.csv_data = (
-            "name,policy_rules,status",
-            f'csvobj1,"{pol_rule.id}",Active',
-            f'csvobj2,"{pol_rule.id}",Active',
-            f'csvobj3,"{pol_rule.id}",Active',
+            "name,rule_type,policy_rules,status",
+            f'csvobj1,panos,"{pol_rule.id}",Active',
+            f'csvobj2,panos,"{pol_rule.id}",Active',
+            f'csvobj3,panos,"{pol_rule.id}",Active',
         )
 
     def test_device_weight_permissions(self):
@@ -478,11 +491,12 @@ class NATPolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         NATPolicyRule.objects.create(name="deleteableobj2")
         NATPolicyRule.objects.create(name="deleteableobj3")
         cls.form_data = {
-            "original_source_addresses": [src_addr.id],
-            "original_destination_addresses": [dest_addr.id],
-            "translated_destination_addresses": [src_addr.id],
+            # The form takes objects and their groups through one combined picker per field.
+            "original_source_addresses_and_groups": [f"object:{src_addr.id}"],
+            "original_destination_addresses_and_groups": [f"object:{dest_addr.id}"],
+            "translated_destination_addresses_and_groups": [f"object:{src_addr.id}"],
             "log": True,
-            "original_destination_services": [svc.id],
+            "original_destination_services_and_groups": [f"object:{svc.id}"],
             "name": "test rule",
             "status": status,
         }
@@ -595,3 +609,255 @@ class NATPolicyUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
 
         # Post succeeds
         self.assertHttpStatus(self.client.post(**post_request), 302)
+
+
+class PolicyRuleTypeUIViewTest(TestCase):
+    """Test the rule type chooser and the form each rule type opens."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a dynamic Address Object to use on an nftables rule."""
+        cls.subnet = AddressObject.objects.create(name="host subnet", dynamic="subnet")
+        cls.url = reverse("plugins:nautobot_firewall_models:policyrule_add")
+
+    def setUp(self):
+        """Grant access to add Policy Rules."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_policyrule",
+            "nautobot_firewall_models.view_policyrule",
+            "nautobot_firewall_models.view_addressobject",
+            "extras.view_status",
+        )
+
+    def test_add_without_rule_type_shows_the_chooser(self):
+        """Add asks for the rule type first and links to the form for each type."""
+        response = self.client.get(self.url)
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, f"{self.url}?rule_type=panos")
+        self.assertContains(response, f"{self.url}?rule_type=nftables")
+
+    def test_nftables_form_hides_panos_fields(self):
+        """The nftables form shows a chain and no band, position, zones, users or applications."""
+        response = self.client.get(f"{self.url}?rule_type=nftables")
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, 'name="chain"')
+        for field in ("band", "position", "source_zones", "source_users", "applications"):
+            self.assertNotContains(response, f'name="{field}"')
+
+    def test_panos_form_hides_the_chain(self):
+        """The PAN-OS form has no chain."""
+        response = self.client.get(f"{self.url}?rule_type=panos")
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, 'name="band"')
+        self.assertNotContains(response, 'name="chain"')
+
+    def test_create_nftables_rule(self):
+        """Posting the nftables form creates an nftables rule."""
+        status = Status.objects.get(name="Active")
+        data = {
+            "rule_type": "nftables",
+            "name": "allow subnet",
+            "chain": "input",
+            "action": "allow",
+            "source_addresses": [self.subnet.pk],
+            "status": status.pk,
+        }
+        response = self.client.post(f"{self.url}?rule_type=nftables", post_data(data))
+
+        self.assertHttpStatus(response, 302)
+        rule = PolicyRule.objects.get(name="allow subnet")
+        self.assertEqual((rule.rule_type, rule.chain, rule.band), ("nftables", "input", None))
+
+
+class ObjectOrGroupPickerUIViewTest(TestCase):
+    """Test the single pickers that list objects and their groups together, e.g. Zones and Zone Groups."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a band, a Zone and a Zone Group."""
+        cls.band, _, _ = fixtures.create_policy_band()
+        cls.zone = Zone.objects.create(name="trust")
+        cls.group = ZoneGroup.objects.create(name="inside")
+        cls.status = Status.objects.get(name="Active")
+        cls.rule_url = reverse("plugins:nautobot_firewall_models:policyrule_add")
+        cls.nat_url = reverse("plugins:nautobot_firewall_models:natpolicyrule_add")
+
+    def setUp(self):
+        """Grant access to add rules and view what they reference."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_policyrule",
+            "nautobot_firewall_models.change_policyrule",
+            "nautobot_firewall_models.view_policyrule",
+            "nautobot_firewall_models.add_natpolicyrule",
+            "nautobot_firewall_models.view_natpolicyrule",
+            "nautobot_firewall_models.view_policyband",
+            "nautobot_firewall_models.view_zone",
+            "nautobot_firewall_models.view_zonegroup",
+            "nautobot_firewall_models.view_addressobject",
+            "nautobot_firewall_models.view_addressobjectgroup",
+            "nautobot_firewall_models.view_serviceobject",
+            "nautobot_firewall_models.view_serviceobjectgroup",
+            "extras.view_status",
+        )
+
+    def _rule_data(self, **data):
+        return post_data(
+            {
+                "rule_type": "panos",
+                "name": "zoned",
+                "band": self.band.pk,
+                "position": "header",
+                "action": "allow",
+                "status": self.status.pk,
+                **data,
+            }
+        )
+
+    def test_form_shows_one_searching_picker_per_field(self):
+        """Each field has one picker that searches the grouped objects API, and the separate pickers are gone."""
+        response = self.client.get(f"{self.rule_url}?rule_type=panos")
+
+        self.assertHttpStatus(response, 200)
+        for name, kind in (
+            ("source_zones", "zones"),
+            ("destination_addresses", "addresses"),
+            ("source_services", "services"),
+            ("source_users", "users"),
+            ("applications", "applications"),
+        ):
+            self.assertContains(response, f'name="{name}_and_groups"')
+            self.assertContains(response, f'data-url="/api/plugins/firewall/grouped-objects/{kind}/"')
+            self.assertNotContains(response, f'name="{name}"')
+        # Options are searched as the user types, so nothing unselected is rendered.
+        self.assertNotContains(response, f'value="object:{self.zone.pk}"')
+
+    def test_picker_saves_zones_and_groups(self):
+        """The picker's selection is split back into the Zone and Zone Group fields."""
+        data = self._rule_data(
+            source_zones_and_groups=[f"object:{self.zone.pk}", f"group:{self.group.pk}"],
+            destination_zones_and_groups=[f"group:{self.group.pk}"],
+        )
+        response = self.client.post(f"{self.rule_url}?rule_type=panos", data)
+
+        self.assertHttpStatus(response, 302)
+        rule = PolicyRule.objects.get(name="zoned")
+        self.assertEqual(list(rule.source_zones.all()), [self.zone])
+        self.assertEqual(list(rule.source_zone_groups.all()), [self.group])
+        self.assertEqual(list(rule.destination_zones.all()), [])
+        self.assertEqual(list(rule.destination_zone_groups.all()), [self.group])
+
+    def test_edit_form_selects_saved_zones_and_groups(self):
+        """Editing a rule preselects its saved Zones and Zone Groups in the picker."""
+        rule = PolicyRule.objects.create(
+            name="saved", action="allow", rule_type="panos", band=self.band, position="header"
+        )
+        rule.source_zones.set([self.zone])
+        rule.source_zone_groups.set([self.group])
+
+        response = self.client.get(reverse("plugins:nautobot_firewall_models:policyrule_edit", kwargs={"pk": rule.pk}))
+
+        self.assertHttpStatus(response, 200)
+        content = response.content.decode()
+        self.assertRegex(content, rf'value="object:{self.zone.pk}"\s+selected')
+        self.assertRegex(content, rf'value="group:{self.group.pk}"\s+selected')
+
+    def test_picker_only_offers_zones_the_user_may_view(self):
+        """A Zone the user may not view is not offered and can not be submitted."""
+        ObjectPermission.objects.filter(object_types__model="zone").delete()
+
+        response = self.client.post(
+            f"{self.rule_url}?rule_type=panos", self._rule_data(source_zones_and_groups=[f"object:{self.zone.pk}"])
+        )
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "Select a valid choice.")
+        self.assertFalse(PolicyRule.objects.filter(name="zoned").exists())
+
+    def test_nat_rule_picker_saves_zones_and_groups(self):
+        """NAT rules use the same picker."""
+        data = post_data(
+            {
+                "name": "nat zoned",
+                "status": self.status.pk,
+                "source_zones_and_groups": [f"group:{self.group.pk}"],
+                "destination_zones_and_groups": [f"object:{self.zone.pk}"],
+            }
+        )
+        response = self.client.post(self.nat_url, data)
+
+        self.assertHttpStatus(response, 302)
+        rule = NATPolicyRule.objects.get(name="nat zoned")
+        self.assertEqual(list(rule.source_zone_groups.all()), [self.group])
+        self.assertEqual(list(rule.destination_zones.all()), [self.zone])
+
+    def test_picker_saves_addresses_services_and_their_groups(self):
+        """Addresses and services use the same picker and save to their object and group fields."""
+        address = AddressObject.objects.create(name="web", dynamic="subnet")
+        address_group = AddressObjectGroup.objects.create(name="web servers")
+        service = ServiceObject.objects.create(name="HTTPS", port="443", ip_protocol="TCP")
+        service_group = ServiceObjectGroup.objects.create(name="web ports")
+        data = post_data(
+            {
+                "rule_type": "nftables",
+                "name": "web",
+                "chain": "input",
+                "action": "allow",
+                "status": self.status.pk,
+                "source_addresses_and_groups": [f"object:{address.pk}", f"group:{address_group.pk}"],
+                "destination_services_and_groups": [f"object:{service.pk}", f"group:{service_group.pk}"],
+            }
+        )
+        response = self.client.post(f"{self.rule_url}?rule_type=nftables", data)
+
+        self.assertHttpStatus(response, 302)
+        rule = PolicyRule.objects.get(name="web")
+        self.assertEqual(list(rule.source_addresses.all()), [address])
+        self.assertEqual(list(rule.source_address_groups.all()), [address_group])
+        self.assertEqual(list(rule.destination_services.all()), [service])
+        self.assertEqual(list(rule.destination_service_groups.all()), [service_group])
+
+    def test_nftables_form_has_no_zone_picker(self):
+        """nftables rules have no zones, so the form has no zone picker but keeps the address picker."""
+        response = self.client.get(f"{self.rule_url}?rule_type=nftables")
+
+        self.assertNotContains(response, 'name="source_zones_and_groups"')
+        self.assertContains(response, 'name="source_addresses_and_groups"')
+
+    def test_picker_saves_users_applications_and_their_groups(self):
+        """Users and applications use the same picker on PAN-OS rules."""
+        self.add_permissions(
+            "nautobot_firewall_models.view_userobject",
+            "nautobot_firewall_models.view_userobjectgroup",
+            "nautobot_firewall_models.view_applicationobject",
+            "nautobot_firewall_models.view_applicationobjectgroup",
+        )
+        user = UserObject.objects.create(username="jdoe", name="J Doe")
+        user_group = UserObjectGroup.objects.create(name="admins")
+        application = ApplicationObject.objects.create(name="ssh")
+        application_group = ApplicationObjectGroup.objects.create(name="remote access")
+        data = self._rule_data(
+            source_users_and_groups=[f"object:{user.pk}", f"group:{user_group.pk}"],
+            applications_and_groups=[f"object:{application.pk}", f"group:{application_group.pk}"],
+        )
+        response = self.client.post(f"{self.rule_url}?rule_type=panos", data)
+
+        self.assertHttpStatus(response, 302)
+        rule = PolicyRule.objects.get(name="zoned")
+        self.assertEqual(list(rule.source_users.all()), [user])
+        self.assertEqual(list(rule.source_user_groups.all()), [user_group])
+        self.assertEqual(list(rule.applications.all()), [application])
+        self.assertEqual(list(rule.application_groups.all()), [application_group])
+
+    def test_malformed_value_is_refused(self):
+        """A value that is not object:<uuid> or group:<uuid> is refused."""
+        response = self.client.post(
+            f"{self.rule_url}?rule_type=panos", self._rule_data(source_zones_and_groups=["zone:not-a-uuid"])
+        )
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "Select a valid choice.")

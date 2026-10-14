@@ -1,4 +1,5 @@
 """Forms for nautobot_firewall_models."""
+# pylint: disable=too-many-lines
 
 from django import forms
 from nautobot.apps.forms import (
@@ -119,6 +120,8 @@ class AddressObjectFilterForm(NautobotFilterForm):
     ip_range = DynamicModelChoiceField(queryset=models.IPRange.objects.all(), required=False, label="IP Range")
     prefix = DynamicModelChoiceField(queryset=Prefix.objects.all(), required=False, label="Prefix")
     fqdn = DynamicModelChoiceField(queryset=models.FQDN.objects.all(), required=False, label="FQDN")
+    device = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
+    dynamic = forms.ChoiceField(choices=add_blank_choice(choices.DYNAMIC_ADDRESS_CHOICES), required=False)
 
 
 class AddressObjectForm(NautobotModelForm):
@@ -128,12 +131,24 @@ class AddressObjectForm(NautobotModelForm):
     ip_range = DynamicModelChoiceField(queryset=models.IPRange.objects.all(), required=False, label="IP Range")
     prefix = DynamicModelChoiceField(queryset=Prefix.objects.all(), required=False, label="Prefix")
     fqdn = DynamicModelChoiceField(queryset=models.FQDN.objects.all(), required=False, label="FQDN")
+    device = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
 
     class Meta:
         """Meta attributes."""
 
         model = models.AddressObject
-        fields = ["name", "description", "fqdn", "ip_range", "ip_address", "prefix", "status", "tags"]
+        fields = [
+            "name",
+            "description",
+            "fqdn",
+            "ip_range",
+            "ip_address",
+            "prefix",
+            "device",
+            "dynamic",
+            "status",
+            "tags",
+        ]
 
 
 class AddressObjectBulkEditForm(NautobotBulkEditForm):
@@ -145,7 +160,7 @@ class AddressObjectBulkEditForm(NautobotBulkEditForm):
     class Meta:
         """Meta attributes."""
 
-        nullable_fields = ["description", "fqdn", "ip_range", "ip_address", "prefix"]
+        nullable_fields = ["description", "fqdn", "ip_range", "ip_address", "prefix", "device"]
 
 
 class AddressObjectGroupFilterForm(NautobotFilterForm):
@@ -172,6 +187,12 @@ class AddressObjectGroupForm(NautobotModelForm):
 
         model = models.AddressObjectGroup
         fields = ["name", "description", "address_objects", "status", "tags"]
+
+    def clean(self):
+        """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses the group."""
+        super().clean()
+        self.instance.validate_address_objects(self.cleaned_data.get("address_objects"))
+        return self.cleaned_data
 
 
 class AddressObjectGroupBulkEditForm(NautobotBulkEditForm):
@@ -599,7 +620,7 @@ class PolicyBandBulkEditForm(NautobotBulkEditForm):
 class PolicyRuleFilterForm(NautobotFilterForm):
     """Filter form to filter searches."""
 
-    field_order = ["q", "name", "band", "position", "device"]
+    field_order = ["q", "name", "rule_type", "band", "position", "chain", "device"]
 
     model = models.PolicyRule
     q = forms.CharField(
@@ -612,15 +633,22 @@ class PolicyRuleFilterForm(NautobotFilterForm):
         queryset=models.PolicyBand.objects.all(), to_field_name="name", required=False, label="Policy Band"
     )
     position = forms.MultipleChoiceField(choices=choices.POSITION_CHOICES, required=False)
+    rule_type = forms.MultipleChoiceField(choices=choices.RULE_TYPE_CHOICES, required=False, label="Rule Type")
+    chain = forms.MultipleChoiceField(choices=choices.CHAIN_CHOICES, required=False)
     device = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
     tag = TagFilterField(models.PolicyRule)
 
 
-class PolicyRuleForm(NautobotModelForm):
-    """PolicyRule creation/edit form."""
+class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
+    """PolicyRule creation/edit form.
+
+    The rule type is chosen before the form opens (see PolicyRuleUIViewSet.create) and is fixed afterwards, so the form
+    only shows the fields that type can use.
+    """
 
     tags = DynamicModelMultipleChoiceField(queryset=Tag.objects.all(), required=False)
-    band = DynamicModelChoiceField(queryset=models.PolicyBand.objects.all(), label="Policy Band")
+    rule_type = forms.ChoiceField(choices=choices.RULE_TYPE_CHOICES, widget=forms.HiddenInput, required=False)
+    band = DynamicModelChoiceField(queryset=models.PolicyBand.objects.all(), required=False, label="Policy Band")
     source_users = DynamicModelMultipleChoiceField(
         queryset=models.UserObject.objects.all(), label="Source User Objects", required=False
     )
@@ -680,8 +708,10 @@ class PolicyRuleForm(NautobotModelForm):
         fields = (
             # pylint: disable=duplicate-code
             "name",
+            "rule_type",
             "band",
             "position",
+            "chain",
             "index",
             "source_users",
             "source_user_groups",
@@ -707,6 +737,33 @@ class PolicyRuleForm(NautobotModelForm):
             "description",
         )
 
+    def __init__(self, *args, **kwargs):
+        """Drop the fields the rule type cannot use."""
+        super().__init__(*args, **kwargs)
+        if self.instance.present_in_database:
+            rule_type = self.instance.rule_type
+        else:
+            rule_type = self.data.get("rule_type") or self.initial.get("rule_type") or self.instance.rule_type
+        self.rule_type = rule_type
+        self.initial["rule_type"] = rule_type
+        if rule_type == "nftables":
+            for field in ("band", "position", *models.PolicyRule.PANOS_ONLY_RELATIONS):
+                del self.fields[field]
+            self.fields["chain"].required = True
+            self.fields["action"].choices = [i for i in self.fields["action"].choices if i[0] != "remark"]
+        else:
+            del self.fields["chain"]
+            self.fields["band"].required = True
+            self.fields["position"].required = True
+        self.combine_grouped_fields()
+
+    def clean(self):
+        """Use the rule type the form was built for and check the related objects against it."""
+        super().clean()
+        self.cleaned_data["rule_type"] = self.rule_type
+        models.PolicyRule.validate_relations(self.cleaned_data.get("rule_type"), self.cleaned_data)
+        return self.cleaned_data
+
 
 # TODO: Refactor
 class PolicyRuleBulkEditForm(NautobotBulkEditForm):
@@ -715,6 +772,7 @@ class PolicyRuleBulkEditForm(NautobotBulkEditForm):
     pk = DynamicModelMultipleChoiceField(queryset=models.PolicyRule.objects.all(), widget=forms.MultipleHiddenInput)
     band = DynamicModelChoiceField(queryset=models.PolicyBand.objects.all(), required=False, label="Policy Band")
     position = forms.ChoiceField(choices=add_blank_choice(choices.POSITION_CHOICES), required=False)
+    chain = forms.ChoiceField(choices=add_blank_choice(choices.CHAIN_CHOICES), required=False)
     index = forms.IntegerField(required=False, min_value=0)
     action = forms.ChoiceField(choices=add_blank_choice(choices.ACTION_CHOICES), required=False)
     log = forms.BooleanField(required=False)
@@ -729,9 +787,10 @@ class PolicyRuleBulkEditForm(NautobotBulkEditForm):
 class PolicyFilterForm(NautobotFilterForm, TenancyFilterForm):
     """Filter form to filter searches."""
 
-    field_order = ["q", "name", "assigned_devices", "assigned_dynamic_groups"]
+    field_order = ["q", "name", "rule_type", "assigned_devices", "assigned_dynamic_groups"]
 
     model = models.Policy
+    rule_type = forms.MultipleChoiceField(choices=choices.RULE_TYPE_CHOICES, required=False, label="Rule Type")
     q = forms.CharField(
         required=False,
         label="Search",
@@ -747,7 +806,9 @@ class PolicyForm(NautobotModelForm, TenancyForm):
 
     assigned_devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
     assigned_dynamic_groups = DynamicModelMultipleChoiceField(queryset=DynamicGroup.objects.all(), required=False)
-    policy_rules = DynamicModelMultipleChoiceField(queryset=models.PolicyRule.objects.all(), required=False)
+    policy_rules = DynamicModelMultipleChoiceField(
+        queryset=models.PolicyRule.objects.all(), required=False, query_params={"rule_type": "$rule_type"}
+    )
 
     class Meta:
         """Meta attributes."""
@@ -755,6 +816,7 @@ class PolicyForm(NautobotModelForm, TenancyForm):
         model = models.Policy
         fields = [
             "name",
+            "rule_type",
             "description",
             "policy_rules",
             "status",
@@ -764,6 +826,18 @@ class PolicyForm(NautobotModelForm, TenancyForm):
             "tenant",
             "tags",
         ]
+
+    def __init__(self, *args, **kwargs):
+        """Lock the rule type once the Policy exists."""
+        super().__init__(*args, **kwargs)
+        if self.instance.present_in_database:
+            self.fields["rule_type"].disabled = True
+
+    def clean(self):
+        """Refuse Policy Rules of another type."""
+        super().clean()
+        models.Policy.validate_policy_rules(self.cleaned_data.get("rule_type"), self.cleaned_data.get("policy_rules"))
+        return self.cleaned_data
 
 
 class PolicyBulkEditForm(NautobotBulkEditForm):
@@ -802,7 +876,7 @@ class NATPolicyRuleFilterForm(NautobotFilterForm):
     tag = TagFilterField(models.NATPolicyRule)
 
 
-class NATPolicyRuleForm(NautobotModelForm):
+class NATPolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
     """NATPolicyRule creation/edit form."""
 
     # Metadata
@@ -926,12 +1000,27 @@ class NATPolicyRuleForm(NautobotModelForm):
             "description",
         )
 
+    def __init__(self, *args, **kwargs):
+        """Show one picker for each object and group field pair."""
+        super().__init__(*args, **kwargs)
+        self.combine_grouped_fields()
+
+    def clean(self):
+        """Refuse host relative Address Objects."""
+        super().clean()
+        models.NATPolicyRule.validate_relations(self.cleaned_data)
+        return self.cleaned_data
+
 
 # TODO: Refactor
 class NATPolicyRuleBulkEditForm(PolicyRuleBulkEditForm):
     """NATPolicyRule bulk edit form."""
 
     pk = DynamicModelMultipleChoiceField(queryset=models.NATPolicyRule.objects.all(), widget=forms.MultipleHiddenInput)
+    # NAT rules have no band, position or chain, so drop the ones inherited from PolicyRuleBulkEditForm.
+    band = None
+    position = None
+    chain = None
     log = forms.BooleanField(required=False)
     description = forms.CharField(required=False)
 

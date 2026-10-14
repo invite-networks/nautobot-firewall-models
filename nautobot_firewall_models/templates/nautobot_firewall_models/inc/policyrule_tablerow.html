@@ -1,6 +1,6 @@
 {% load helpers %}
 <tr>
-    <td>{{ rule.band }} / {{ rule.get_position_display }}</td>
+    <td>{% if rule.rule_type == "nftables" %}{{ rule.get_chain_display }}{% else %}{{ rule.band }} / {{ rule.get_position_display }}{% endif %}</td>
     <td>{{ rule.index|placeholder }}</td>
     {% if rule.action == "remark" %}
         <td colspan="8" style="text-align: center;"><strong>{{ rule }}</strong></td>

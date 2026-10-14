@@ -1,5 +1,6 @@
 """Django API urlpatterns declaration for nautobot_firewall_models app."""
 
+from django.urls import path
 from nautobot.apps.api import OrderedDefaultRouter
 
 from nautobot_firewall_models.api import views
@@ -29,4 +30,7 @@ router.register("zone", views.ZoneViewSet)
 router.register("zone-group", views.ZoneGroupViewSet)
 
 app_name = "nautobot_firewall_models-api"
-urlpatterns = router.urls
+urlpatterns = [
+    path("grouped-objects/<str:kind>/", views.GroupedObjectsView.as_view(), name="grouped-objects"),
+    *router.urls,
+]

@@ -41,13 +41,25 @@ class AddressObjectTable(StatusTableMixin, BaseTable):
 
     pk = ToggleColumn()
     name = tables.Column(linkify=True)
+    device = tables.Column(linkify=True)
     actions = ButtonsColumn(models.AddressObject, buttons=("edit", "delete"))
 
     class Meta(BaseTable.Meta):
         """Meta attributes."""
 
         model = models.AddressObject
-        fields = ("pk", "name", "description", "ip_address", "ip_range", "prefix", "fqdn", "status")
+        fields = (
+            "pk",
+            "name",
+            "description",
+            "ip_address",
+            "ip_range",
+            "prefix",
+            "fqdn",
+            "device",
+            "dynamic",
+            "status",
+        )
 
 
 class AddressObjectGroupTable(StatusTableMixin, BaseTable):
@@ -209,8 +221,10 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
         fields = (
             # pylint: disable=duplicate-code
             "pk",
+            "rule_type",
             "band",
             "position",
+            "chain",
             "index",
             "name",
             "source_users",
@@ -238,8 +252,10 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
         )
         default_columns = (
             "pk",
+            "rule_type",
             "band",
             "position",
+            "chain",
             "index",
             "name",
             "source_users",
@@ -278,7 +294,16 @@ class PolicyTable(StatusTableMixin, BaseTable):
         """Meta attributes."""
 
         model = models.Policy
-        fields = ("pk", "name", "description", "policy_rules", "assigned_devices", "assigned_dynamic_groups", "status")
+        fields = (
+            "pk",
+            "name",
+            "rule_type",
+            "description",
+            "policy_rules",
+            "assigned_devices",
+            "assigned_dynamic_groups",
+            "status",
+        )
 
 
 # TODO: refactor

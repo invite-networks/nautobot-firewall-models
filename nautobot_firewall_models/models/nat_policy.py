@@ -1,12 +1,14 @@
 """Models for the Firewall app."""
 # pylint: disable=duplicate-code, too-many-lines
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
 from nautobot.core.models.generics import BaseModel, PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
+from nautobot_firewall_models.models.address import host_relative_names
 from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
@@ -203,6 +205,17 @@ class NATPolicyRule(PrimaryModel):
 
     natural_key_field_names = ["pk"]
 
+    ADDRESS_RELATIONS = (
+        "original_source_addresses",
+        "original_source_address_groups",
+        "translated_source_addresses",
+        "translated_source_address_groups",
+        "original_destination_addresses",
+        "original_destination_address_groups",
+        "translated_destination_addresses",
+        "translated_destination_address_groups",
+    )
+
     class Meta:
         """Meta class."""
 
@@ -244,6 +257,19 @@ class NATPolicyRule(PrimaryModel):
         row["status"] = self.status
         row["request_id"] = self.request_id
         return row
+
+    @classmethod
+    def validate_relations(cls, relations):
+        """Refuse host relative Address Objects, which only nftables Policy Rules can render.
+
+        `relations` maps a many-to-many field name to the objects being assigned, as on PolicyRule.validate_relations.
+        """
+        errors = {}
+        for field in cls.ADDRESS_RELATIONS:
+            if names := host_relative_names(relations.get(field)):
+                errors[field] = f"Device and dynamic Address Objects only work on nftables rules: {', '.join(names)}."
+        if errors:
+            raise ValidationError(errors)
 
     def expanded_source_zones(self):
         """Return the source Zones with every source ZoneGroup expanded into its member Zones."""
