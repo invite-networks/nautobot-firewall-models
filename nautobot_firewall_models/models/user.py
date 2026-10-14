@@ -7,6 +7,7 @@ from nautobot.core.models.generics import PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
+from nautobot_firewall_models.models.mixins import ManagedLocallyGroupMixin
 from nautobot_firewall_models.utils import get_default_status
 
 ###########################
@@ -64,8 +65,10 @@ class UserObject(PrimaryModel):
     "statuses",
     "webhooks",
 )
-class UserObjectGroup(PrimaryModel):
+class UserObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Grouping of individual user objects, does NOT have any relationship to AD groups or any other IDP group."""
+
+    members_field = "user_objects"
 
     description = models.CharField(
         max_length=1024,

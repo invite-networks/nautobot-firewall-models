@@ -69,6 +69,44 @@ def get_default_status_name():
     return default_status_name
 
 
+MANAGED_LOCALLY_STATUS = "Managed Locally"
+
+# Objects a rule references by name, which can be defined on the firewall itself instead of in Nautobot.
+MANAGED_LOCALLY_MODELS = (
+    "addressobject",
+    "addressobjectgroup",
+    "serviceobject",
+    "serviceobjectgroup",
+    "applicationobject",
+    "applicationobjectgroup",
+    "userobject",
+    "userobjectgroup",
+)
+
+
+def create_managed_locally_status(apps=django_apps):
+    """Create the Managed Locally status for the objects a rule references by name. Usable in migrations."""
+    Status = apps.get_model("extras.Status")  # pylint: disable=invalid-name
+    ContentType = apps.get_model("contenttypes.ContentType")  # pylint: disable=invalid-name
+    status, _ = Status.objects.get_or_create(
+        name=MANAGED_LOCALLY_STATUS,
+        defaults={
+            "color": "607d8b",
+            "description": "Referenced by name in policy, while the firewall defines and maintains its contents.",
+        },
+    )
+    content_types = [
+        ContentType.objects.get_for_model(apps.get_model("nautobot_firewall_models", name))
+        for name in MANAGED_LOCALLY_MODELS
+    ]
+    status.content_types.add(*content_types)
+
+
+def is_managed_locally(status):
+    """Return whether `status` is Managed Locally."""
+    return status is not None and status.name == MANAGED_LOCALLY_STATUS
+
+
 def get_firewall_models_with_status_field(apps=django_apps):
     """Return a list of content types for all firewall models that have a status field. Usable in migrations."""
     model_content_types = []

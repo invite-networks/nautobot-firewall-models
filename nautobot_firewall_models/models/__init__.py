@@ -4,7 +4,6 @@ from .address import (
     FQDN,
     AddressObject,
     AddressObjectGroup,
-    IPRange,
 )
 from .nat_policy import (
     NATPolicy,
@@ -34,7 +33,6 @@ __all__ = (
     "ApplicationObject",
     "ApplicationObjectGroup",
     "FQDN",
-    "IPRange",
     "NATPolicy",
     "NATPolicyDeviceM2M",
     "NATPolicyDynamicGroupM2M",

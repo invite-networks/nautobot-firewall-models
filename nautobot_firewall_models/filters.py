@@ -4,7 +4,6 @@ import django_filters
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db.models import Q
 from nautobot.apps.filters import (
-    MultiValueCharFilter,
     NaturalKeyOrPKMultipleChoiceFilter,
     NautobotFilterSet,
     SearchFilter,
@@ -24,24 +23,6 @@ class BaseFilterSet(StatusModelFilterSetMixin, django_filters.filterset.FilterSe
             "description": "icontains",
         }
     )
-
-
-class IPRangeFilterSet(BaseFilterSet, NautobotFilterSet):  # pylint: disable=too-many-ancestors
-    """Filter for IPRange."""
-
-    start_address = MultiValueCharFilter(
-        label="Address",
-    )
-    end_address = MultiValueCharFilter(
-        label="Address",
-    )
-
-    class Meta:
-        """Meta attributes for filter."""
-
-        model = models.IPRange
-
-        fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 
 class FQDNFilterSet(BaseFilterSet, NautobotFilterSet):

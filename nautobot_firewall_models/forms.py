@@ -3,6 +3,7 @@
 
 from django import forms
 from nautobot.apps.forms import (
+    BulkEditNullBooleanSelect,
     DynamicModelChoiceField,
     DynamicModelMultipleChoiceField,
     TagFilterField,
@@ -20,49 +21,6 @@ from nautobot.tenancy.forms import TenancyFilterForm, TenancyForm
 from nautobot.tenancy.models import Tenant
 
 from nautobot_firewall_models import choices, fields, models
-
-
-class IPRangeFilterForm(NautobotFilterForm):
-    """Filter form to filter searches."""
-
-    field_order = ["q", "start_address", "end_address", "vrf"]
-
-    model = models.IPRange
-    q = forms.CharField(
-        required=False,
-        label="Search",
-        help_text="Search within Name or Description.",
-    )
-    start_address = forms.CharField(required=False, label="Starting Address")
-    end_address = forms.CharField(required=False, label="Ending Address")
-    vrf = DynamicModelChoiceField(queryset=VRF.objects.all(), label="VRF", required=False)
-
-
-class IPRangeForm(fields.IPRangeFieldMixin, NautobotModelForm):
-    """IPRange creation/edit form."""
-
-    vrf = DynamicModelChoiceField(queryset=VRF.objects.all(), label="VRF", required=False)
-
-    class Meta:
-        """Meta attributes."""
-
-        model = models.IPRange
-        fields = ["vrf", "description", "status", "tags"]
-
-
-class IPRangeBulkEditForm(NautobotBulkEditForm):
-    """IPRange bulk edit form."""
-
-    pk = DynamicModelMultipleChoiceField(queryset=models.IPRange.objects.all(), widget=forms.MultipleHiddenInput)
-    description = forms.CharField(required=False)
-    # start_address = forms.CharField(required=False)
-    # end_address = forms.CharField(required=False)
-    vrf = DynamicModelChoiceField(queryset=VRF.objects.all(), required=False)
-
-    class Meta:
-        """Meta attributes."""
-
-        nullable_fields = ["description", "vrf"]
 
 
 class FQDNFilterForm(NautobotFilterForm):
@@ -117,7 +75,6 @@ class AddressObjectFilterForm(NautobotFilterForm):
     )
     name = forms.CharField(required=False, label="Name")
     ip_address = DynamicModelChoiceField(queryset=IPAddress.objects.all(), required=False, label="IP Address")
-    ip_range = DynamicModelChoiceField(queryset=models.IPRange.objects.all(), required=False, label="IP Range")
     prefix = DynamicModelChoiceField(queryset=Prefix.objects.all(), required=False, label="Prefix")
     fqdn = DynamicModelChoiceField(queryset=models.FQDN.objects.all(), required=False, label="FQDN")
     device = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
@@ -128,7 +85,6 @@ class AddressObjectForm(NautobotModelForm):
     """AddressObject creation/edit form."""
 
     ip_address = DynamicModelChoiceField(queryset=IPAddress.objects.all(), required=False, label="IP Address")
-    ip_range = DynamicModelChoiceField(queryset=models.IPRange.objects.all(), required=False, label="IP Range")
     prefix = DynamicModelChoiceField(queryset=Prefix.objects.all(), required=False, label="Prefix")
     fqdn = DynamicModelChoiceField(queryset=models.FQDN.objects.all(), required=False, label="FQDN")
     device = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
@@ -141,7 +97,6 @@ class AddressObjectForm(NautobotModelForm):
             "name",
             "description",
             "fqdn",
-            "ip_range",
             "ip_address",
             "prefix",
             "device",
@@ -160,7 +115,7 @@ class AddressObjectBulkEditForm(NautobotBulkEditForm):
     class Meta:
         """Meta attributes."""
 
-        nullable_fields = ["description", "fqdn", "ip_range", "ip_address", "prefix", "device"]
+        nullable_fields = ["description", "fqdn", "ip_address", "prefix", "device"]
 
 
 class AddressObjectGroupFilterForm(NautobotFilterForm):
@@ -177,7 +132,7 @@ class AddressObjectGroupFilterForm(NautobotFilterForm):
     name = forms.CharField(required=False, label="Name")
 
 
-class AddressObjectGroupForm(NautobotModelForm):
+class AddressObjectGroupForm(fields.ManagedLocallyGroupFormMixin, NautobotModelForm):
     """AddressObjectGroup creation/edit form."""
 
     address_objects = DynamicModelMultipleChoiceField(queryset=models.AddressObject.objects.all(), required=False)
@@ -186,7 +141,7 @@ class AddressObjectGroupForm(NautobotModelForm):
         """Meta attributes."""
 
         model = models.AddressObjectGroup
-        fields = ["name", "description", "address_objects", "status", "tags"]
+        fields = ["name", "description", "address_objects", "flatten", "status", "tags"]
 
     def clean(self):
         """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses the group."""
@@ -202,6 +157,7 @@ class AddressObjectGroupBulkEditForm(NautobotBulkEditForm):
         queryset=models.AddressObjectGroup.objects.all(), widget=forms.MultipleHiddenInput
     )
     description = forms.CharField(required=False)
+    flatten = forms.NullBooleanField(required=False, widget=BulkEditNullBooleanSelect)
 
     class Meta:
         """Meta attributes."""
@@ -288,7 +244,7 @@ class ApplicationObjectGroupFilterForm(NautobotFilterForm):
     name = forms.CharField(required=False, label="Name")
 
 
-class ApplicationObjectGroupForm(NautobotModelForm):
+class ApplicationObjectGroupForm(fields.ManagedLocallyGroupFormMixin, NautobotModelForm):
     """ApplicationObjectGroup creation/edit form."""
 
     application_objects = DynamicModelMultipleChoiceField(queryset=models.ApplicationObject.objects.all())
@@ -377,7 +333,7 @@ class ServiceObjectGroupFilterForm(NautobotFilterForm):
     name = forms.CharField(required=False, label="Name")
 
 
-class ServiceObjectGroupForm(NautobotModelForm):
+class ServiceObjectGroupForm(fields.ManagedLocallyGroupFormMixin, NautobotModelForm):
     """ServiceObjectGroup creation/edit form."""
 
     service_objects = DynamicModelMultipleChoiceField(queryset=models.ServiceObject.objects.all(), required=False)
@@ -464,7 +420,7 @@ class UserObjectGroupFilterForm(NautobotFilterForm):
     name = forms.CharField(required=False, label="Name")
 
 
-class UserObjectGroupForm(NautobotModelForm):
+class UserObjectGroupForm(fields.ManagedLocallyGroupFormMixin, NautobotModelForm):
     """UserObjectGroup creation/edit form."""
 
     user_objects = DynamicModelMultipleChoiceField(queryset=models.UserObject.objects.all(), required=False)
@@ -717,12 +673,14 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
             "source_user_groups",
             "source_addresses",
             "source_address_groups",
+            "negate_source",
             "source_zones",
             "source_zone_groups",
             "source_services",
             "source_service_groups",
             "destination_addresses",
             "destination_address_groups",
+            "negate_destination",
             "destination_zones",
             "destination_zone_groups",
             "destination_services",
@@ -747,7 +705,13 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
         self.rule_type = rule_type
         self.initial["rule_type"] = rule_type
         if rule_type == "nftables":
-            for field in ("band", "position", *models.PolicyRule.PANOS_ONLY_RELATIONS):
+            for field in (
+                "band",
+                "position",
+                "negate_source",
+                "negate_destination",
+                *models.PolicyRule.PANOS_ONLY_RELATIONS,
+            ):
                 del self.fields[field]
             self.fields["chain"].required = True
             self.fields["action"].choices = [i for i in self.fields["action"].choices if i[0] != "remark"]

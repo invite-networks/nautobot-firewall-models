@@ -22,42 +22,6 @@ class TestModels(TestCase):
         """Setup test data."""
         self.vrf = VRF.objects.create(name="Development")
 
-    def test_create_iprange_only_required(self):
-        """Create IPRange with only required fields, and validate null description and __str__."""
-        iprange = IPRange.objects.create(start_address="10.0.0.1", end_address="10.0.0.5")
-
-        self.assertEqual(iprange.start_address, "10.0.0.1")
-        self.assertEqual(iprange.end_address, "10.0.0.5")
-        self.assertEqual(iprange.description, "")
-        self.assertEqual(str(iprange), "10.0.0.1-10.0.0.5")
-        self.assertEqual(iprange.vrf, None)
-        self.assertEqual(iprange.size, 5)
-
-    def test_create_iprange_all_fields_success(self):
-        """Create IPRange with all fields."""
-        iprange = IPRange.objects.create(
-            start_address="10.0.0.1", end_address="10.0.0.5", description="Development", vrf=self.vrf
-        )
-
-        self.assertEqual(iprange.start_address, "10.0.0.1")
-        self.assertEqual(iprange.end_address, "10.0.0.5")
-        self.assertEqual(iprange.description, "Development")
-        self.assertEqual(str(iprange), "10.0.0.1-10.0.0.5")
-        self.assertEqual(iprange.vrf, self.vrf)
-        self.assertEqual(iprange.size, 5)
-
-    def test_iprange_missing_required_attr(self):
-        """Test missing start_address."""
-        with self.assertRaises(ValidationError):
-            IPRange.objects.create(end_address="10.0.0.5", description="Development", vrf=self.vrf)
-
-    def test_iprange_invalid_range(self):
-        """Test missing start_address."""
-        with self.assertRaises(ValidationError):
-            IPRange.objects.create(
-                start_address="10.0.0.15", end_address="10.0.0.5", description="Development", vrf=self.vrf
-            )
-
     def test_create_zone_only_required(self):
         """Create Zone with only required fields, and validate null description and __str__."""
         zone = Zone.objects.create(name="trust")
@@ -91,10 +55,9 @@ class TestModels(TestCase):
     def test_address_object_too_many_objects(self):
         """Tests to make sure only one address can be on an address object."""
         fqdn = FQDN.objects.create(name="test.local")
-        iprange = IPRange.objects.create(start_address="10.0.0.1", end_address="10.0.0.5")
 
         with self.assertRaises(ValidationError):
-            AddressObject.objects.create(name="failure", fqdn=fqdn, ip_range=iprange)
+            AddressObject.objects.create(name="failure", fqdn=fqdn, dynamic="subnet")
 
     def test_create_protocol_only_required(self):
         """Creates a protocol with only required fields."""
@@ -614,6 +577,35 @@ class TestRuleTypes(TestCase):
             rule.full_clean()
         self.assertEqual(set(ctx.exception.message_dict), {"band", "position", "action"})
 
+    def test_panos_rule_can_negate_source_and_destination(self):
+        """PAN-OS rules may negate their source and destination addresses."""
+        rule = PolicyRule(
+            name="not internal",
+            action="allow",
+            rule_type="panos",
+            band=self.band,
+            position="header",
+            negate_source=True,
+            negate_destination=True,
+        )
+        rule.full_clean()
+
+        self.assertFalse(PolicyRule(name="default").negate_source)
+
+    def test_nftables_refuses_negation(self):
+        """Negation is a PAN-OS option."""
+        rule = PolicyRule(
+            name="negated",
+            action="allow",
+            rule_type="nftables",
+            chain="input",
+            negate_source=True,
+            negate_destination=True,
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            rule.full_clean()
+        self.assertEqual(set(ctx.exception.message_dict), {"negate_source", "negate_destination"})
+
     def test_panos_refuses_a_chain(self):
         """Chains are an nftables concept."""
         rule = PolicyRule(
@@ -840,3 +832,127 @@ class TestPolicyRuleTypes(TestCase):
         with self.assertRaises(ValidationError) as ctx:
             self.panos_policy.full_clean()
         self.assertIn("rule_type", ctx.exception.message_dict)
+
+
+class TestManagedLocally(TestCase):
+    """Test objects whose definition lives on the firewall, so Nautobot holds only their name."""
+
+    def setUp(self) -> None:
+        """Get the Managed Locally status, which the migrations create."""
+        self.managed = Status.objects.get(name="Managed Locally")
+        self.prefix = fixtures.create_linux_host().primary_ip4.parent
+
+    def test_status_applies_to_referenced_objects(self):
+        """The status is offered on the objects and groups a rule references by name."""
+        self.assertEqual(
+            sorted(self.managed.content_types.values_list("model", flat=True)),
+            sorted(
+                [
+                    "addressobject",
+                    "addressobjectgroup",
+                    "serviceobject",
+                    "serviceobjectgroup",
+                    "applicationobject",
+                    "applicationobjectgroup",
+                    "userobject",
+                    "userobjectgroup",
+                ]
+            ),
+        )
+
+    def test_managed_locally_address_object_has_no_address(self):
+        """A Managed Locally Address Object needs only a name."""
+        obj = AddressObject.objects.create(name="Palo Alto Networks - High risk IP addresses", status=self.managed)
+
+        self.assertEqual(obj.get_address_info(), ("managed locally", "defined on the firewall"))
+        self.assertFalse(obj.is_host_relative)
+
+    def test_managed_locally_address_object_refuses_an_address(self):
+        """A Managed Locally Address Object can not also hold an address."""
+        with self.assertRaises(ValidationError):
+            AddressObject.objects.create(name="local", prefix=self.prefix, status=self.managed)
+
+    def test_managed_locally_group_refuses_members(self):
+        """A Managed Locally group can not gain members, from the group side or the member side."""
+        group = AddressObjectGroup.objects.create(name="High risk", status=self.managed)
+        member = AddressObject.objects.create(name="subnet", prefix=self.prefix)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            group.address_objects.add(member)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            member.address_object_groups.add(group)
+
+    def test_every_managed_locally_group_type_refuses_members(self):
+        """Service, application and user groups refuse members too."""
+        cases = (
+            (ServiceObjectGroup, "service_objects", ServiceObject(name="HTTPS", port="443", ip_protocol="TCP")),
+            (ApplicationObjectGroup, "application_objects", ApplicationObject(name="ssl")),
+            (UserObjectGroup, "user_objects", UserObject(username="jdoe", name="J Doe")),
+        )
+        for model, field, member in cases:
+            member.save()
+            group = model.objects.create(name=f"{model.__name__} local", status=self.managed)
+            with self.subTest(model=model.__name__), self.assertRaises(ValidationError), transaction.atomic():
+                getattr(group, field).add(member)
+
+    def test_managed_locally_objects_work_on_panos_rules(self):
+        """PAN-OS rules can reference a Managed Locally object by name."""
+        band, _, _ = fixtures.create_policy_band()
+        rule = PolicyRule.objects.create(name="block", action="deny", rule_type="panos", band=band, position="header")
+        obj = AddressObject.objects.create(name="Palo Alto Networks - High risk IP addresses", status=self.managed)
+        rule.source_addresses.add(obj)
+
+        self.assertEqual(list(rule.source_addresses.all()), [obj])
+
+
+class TestFlattenedAddressGroups(TestCase):
+    """Test that a flattened Address Object Group renders as its Address Objects."""
+
+    def setUp(self) -> None:
+        """Create country objects, a flattened country group, a normal group and a rule."""
+        managed = Status.objects.get(name="Managed Locally")
+        self.cn = AddressObject.objects.create(name="CN", status=managed)
+        self.ru = AddressObject.objects.create(name="RU", status=managed)
+        self.office = AddressObject.objects.create(name="office", fqdn=FQDN.objects.create(name="office.example.com"))
+        self.countries = AddressObjectGroup.objects.create(name="High Risk Countries", flatten=True)
+        self.countries.address_objects.set([self.cn, self.ru])
+        self.servers = AddressObjectGroup.objects.create(name="servers")
+        self.servers.address_objects.set([self.office])
+        band, _, _ = fixtures.create_policy_band()
+        self.rule = PolicyRule.objects.create(
+            name="block countries", action="deny", rule_type="panos", band=band, position="header"
+        )
+
+    def test_flatten_is_off_by_default(self):
+        """Groups are rendered as groups unless flatten is set."""
+        self.assertFalse(self.servers.flatten)
+
+    def test_flattened_group_renders_as_its_members(self):
+        """The flattened group is replaced by its Address Objects, and other groups and objects are kept."""
+        self.rule.source_address_groups.set([self.countries, self.servers])
+        self.rule.source_addresses.set([self.office])
+
+        self.assertEqual(list(self.rule.rendered_source_address_groups()), [self.servers])
+        self.assertCountEqual(self.rule.rendered_source_addresses(), [self.cn, self.office, self.ru])
+
+    def test_members_already_on_the_rule_are_not_repeated(self):
+        """An Address Object on the rule and in a flattened group is listed once."""
+        self.rule.destination_address_groups.set([self.countries])
+        self.rule.destination_addresses.set([self.cn])
+
+        self.assertEqual(list(self.rule.rendered_destination_addresses()), [self.cn, self.ru])
+        self.assertEqual(list(self.rule.rendered_destination_address_groups()), [])
+
+    def test_empty_flattened_group_stays_a_group(self):
+        """An empty flattened group is kept as a group, so the rule never widens to any address."""
+        empty = AddressObjectGroup.objects.create(name="empty", flatten=True)
+        self.rule.source_address_groups.set([empty])
+
+        self.assertEqual(list(self.rule.rendered_source_address_groups()), [empty])
+        self.assertEqual(list(self.rule.rendered_source_addresses()), [])
+
+    def test_managed_locally_group_can_not_be_flattened(self):
+        """A Managed Locally group has no members here to flatten into."""
+        group = AddressObjectGroup(name="local", flatten=True, status=Status.objects.get(name="Managed Locally"))
+        with self.assertRaises(ValidationError) as ctx:
+            group.full_clean()
+        self.assertIn("flatten", ctx.exception.message_dict)

@@ -6,31 +6,12 @@
 from django.urls import reverse
 from nautobot.apps.testing import TestCase, ViewTestCases, post_data
 from nautobot.extras.models import Status
+from nautobot.ipam.models import Prefix
 from nautobot.users.models import ObjectPermission
 
 from nautobot_firewall_models.models import *  # pylint: disable=unused-wildcard-import, wildcard-import
 
 from . import fixtures
-
-
-class IPRangeUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
-    """Test the IPRange viewsets."""
-
-    model = IPRange
-    bulk_edit_data = {"description": "test update description"}
-
-    @classmethod
-    def setUpTestData(cls):
-        """Create test data for UI calls."""
-        status = Status.objects.get(name="Active").id
-        cls.form_data = {"start_address": "10.0.0.1", "end_address": "10.0.0.3", "status": status}
-        fixtures.create_ip_range()
-        cls.csv_data = (
-            "start_address,end_address,status",
-            "11.11.11.1,11.11.11.11,Active",
-            "11.11.21.1,11.11.21.11,Active",
-            "11.11.31.1,11.11.31.11,Active",
-        )
 
 
 class FQDNUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
@@ -63,18 +44,18 @@ class AddressObjectUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     def setUpTestData(cls):
         """Create test data for API calls."""
         fixtures.create_addr_obj()
-        ip_range = IPRange.objects.first()
+        prefix = Prefix.objects.first()
         status = Status.objects.get(name="Active").id
-        AddressObject.objects.create(name="deleteableobj1", ip_range=ip_range)
-        AddressObject.objects.create(name="deleteableobj2", ip_range=ip_range)
-        AddressObject.objects.create(name="deleteableobj3", ip_range=ip_range)
+        AddressObject.objects.create(name="deleteableobj1", prefix=prefix)
+        AddressObject.objects.create(name="deleteableobj2", prefix=prefix)
+        AddressObject.objects.create(name="deleteableobj3", prefix=prefix)
 
-        cls.form_data = {"name": "obj1", "ip_range": ip_range.id, "status": status}
+        cls.form_data = {"name": "obj1", "prefix": prefix.id, "status": status}
         cls.csv_data = (
-            "name,ip_range,status",
-            f"csvobj1,{ip_range.id},Active",
-            f"csvobj2,{ip_range.id},Active",
-            f"csvobj3,{ip_range.id},Active",
+            "name,prefix,status",
+            f"csvobj1,{prefix.id},Active",
+            f"csvobj2,{prefix.id},Active",
+            f"csvobj3,{prefix.id},Active",
         )
 
 
@@ -647,6 +628,35 @@ class PolicyRuleTypeUIViewTest(TestCase):
         for field in ("band", "position", "source_zones", "source_users", "applications"):
             self.assertNotContains(response, f'name="{field}"')
 
+    def test_negate_checkboxes_only_on_panos_form(self):
+        """The PAN-OS form has the negate checkboxes and the nftables form does not."""
+        panos = self.client.get(f"{self.url}?rule_type=panos")
+        nftables = self.client.get(f"{self.url}?rule_type=nftables")
+
+        for field in ("negate_source", "negate_destination"):
+            self.assertContains(panos, f'name="{field}"')
+            self.assertNotContains(nftables, f'name="{field}"')
+
+    def test_create_panos_rule_with_negated_source(self):
+        """Posting the PAN-OS form saves the negate checkboxes, and the expanded rule marks the negated side."""
+        self.add_permissions("nautobot_firewall_models.view_policyband")
+        band, _, _ = fixtures.create_policy_band()
+        data = {
+            "rule_type": "panos",
+            "name": "not internal",
+            "band": band.pk,
+            "position": "header",
+            "action": "allow",
+            "negate_source": True,
+            "status": Status.objects.get(name="Active").pk,
+        }
+        response = self.client.post(f"{self.url}?rule_type=panos", post_data(data))
+
+        self.assertHttpStatus(response, 302)
+        rule = PolicyRule.objects.get(name="not internal")
+        self.assertEqual((rule.negate_source, rule.negate_destination), (True, False))
+        self.assertContains(self.client.get(rule.get_absolute_url()), "Matches every address except these")
+
     def test_panos_form_hides_the_chain_and_source_services(self):
         """The PAN-OS form has no chain and no source services, which PAN-OS security rules do not support."""
         response = self.client.get(f"{self.url}?rule_type=panos")
@@ -873,3 +883,41 @@ class ObjectOrGroupPickerUIViewTest(TestCase):
 
         self.assertHttpStatus(response, 200)
         self.assertContains(response, "Select a valid choice.")
+
+
+class ManagedLocallyUIViewTest(TestCase):
+    """Test the Managed Locally checks on the group and Address Object forms."""
+
+    def setUp(self):
+        """Grant access to Address Objects and their groups."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_addressobject",
+            "nautobot_firewall_models.view_addressobject",
+            "nautobot_firewall_models.add_addressobjectgroup",
+            "nautobot_firewall_models.view_addressobjectgroup",
+            "extras.view_status",
+        )
+        self.managed = Status.objects.get(name="Managed Locally")
+
+    def test_create_managed_locally_address_object_by_name_only(self):
+        """The Address Object form accepts a Managed Locally object with only a name."""
+        response = self.client.post(
+            reverse("plugins:nautobot_firewall_models:addressobject_add"),
+            post_data({"name": "High risk IP addresses", "status": self.managed.pk}),
+        )
+
+        self.assertHttpStatus(response, 302)
+        self.assertTrue(AddressObject.objects.filter(name="High risk IP addresses").exists())
+
+    def test_managed_locally_group_form_refuses_members(self):
+        """The group form refuses members on a Managed Locally group."""
+        member = AddressObject.objects.create(name="local", dynamic="subnet")
+        response = self.client.post(
+            reverse("plugins:nautobot_firewall_models:addressobjectgroup_add"),
+            post_data({"name": "High risk", "status": self.managed.pk, "address_objects": [member.pk]}),
+        )
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "A Managed Locally group is defined on the firewall")
+        self.assertFalse(AddressObjectGroup.objects.filter(name="High risk").exists())

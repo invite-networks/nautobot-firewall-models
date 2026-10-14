@@ -9,7 +9,7 @@ from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models import choices
-from nautobot_firewall_models.models.address import host_relative_names
+from nautobot_firewall_models.models.address import host_relative_names, render_addresses
 from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
@@ -83,6 +83,22 @@ class PolicyRule(PrimaryModel):
         "source_services",
         "source_service_groups",
     )
+    # Per rule type, the fields it requires and the fields it refuses, each with the error to show.
+    TYPE_FIELDS = {
+        "panos": (
+            {"band": "PAN-OS rules need a Policy Band.", "position": "PAN-OS rules need a position."},
+            {"chain": "Only nftables rules have a chain."},
+        ),
+        "nftables": (
+            {"chain": "nftables rules need a chain."},
+            {
+                "band": "Only PAN-OS rules have a Policy Band.",
+                "position": "Only PAN-OS rules have a position.",
+                "negate_source": "Only PAN-OS rules can negate an address.",
+                "negate_destination": "Only PAN-OS rules can negate an address.",
+            },
+        ),
+    }
     ADDRESS_RELATIONS = (
         "source_addresses",
         "source_address_groups",
@@ -180,6 +196,16 @@ class PolicyRule(PrimaryModel):
     )
     action = models.CharField(choices=choices.ACTION_CHOICES, max_length=CHARFIELD_MAX_LENGTH)
     log = models.BooleanField(default=False)
+    negate_source = models.BooleanField(
+        default=False,
+        verbose_name="Negate Source",
+        help_text="PAN-OS only. Match every source except the addresses set.",
+    )
+    negate_destination = models.BooleanField(
+        default=False,
+        verbose_name="Negate Destination",
+        help_text="PAN-OS only. Match every destination except the addresses set.",
+    )
     status = StatusField(
         on_delete=models.PROTECT,
         related_name="%(app_label)s_%(class)s_related",  # e.g. dcim_device_related
@@ -283,6 +309,8 @@ class PolicyRule(PrimaryModel):
         row["destination_services"] = self.destination_services.all()
         row["destination_service_groups"] = self.destination_service_groups.all()
 
+        row["negate_source"] = self.negate_source
+        row["negate_destination"] = self.negate_destination
         row["action"] = self.action
         row["log"] = self.log
         row["status"] = self.status
@@ -293,22 +321,12 @@ class PolicyRule(PrimaryModel):
         """Require the fields the rule type needs and refuse the ones it cannot use."""
         super().clean()
         errors = {}
-        if self.rule_type == "panos":
-            if not self.band_id:
-                errors["band"] = "PAN-OS rules need a Policy Band."
-            if not self.position:
-                errors["position"] = "PAN-OS rules need a position."
-            if self.chain:
-                errors["chain"] = "Only nftables rules have a chain."
-        elif self.rule_type == "nftables":
-            if not self.chain:
-                errors["chain"] = "nftables rules need a chain."
-            if self.band_id:
-                errors["band"] = "Only PAN-OS rules have a Policy Band."
-            if self.position:
-                errors["position"] = "Only PAN-OS rules have a position."
-            if self.action == "remark":
-                errors["action"] = "nftables rules cannot be remarks."
+        required, refused = self.TYPE_FIELDS.get(self.rule_type, ({}, {}))
+        # serializable_value() reads a foreign key's id, so checking the band does not load it.
+        errors.update({field: msg for field, msg in required.items() if not self.serializable_value(field)})
+        errors.update({field: msg for field, msg in refused.items() if self.serializable_value(field)})
+        if self.rule_type == "nftables" and self.action == "remark":
+            errors["action"] = "nftables rules cannot be remarks."
         if self.present_in_database:
             saved_type = PolicyRule.objects.filter(pk=self.pk).values_list("rule_type", flat=True).first()
             if saved_type and saved_type != self.rule_type:
@@ -340,6 +358,22 @@ class PolicyRule(PrimaryModel):
                     )
         if errors:
             raise ValidationError(errors)
+
+    def rendered_source_addresses(self):
+        """Return the source Address Objects to render, including the members of every flattened group."""
+        return render_addresses(self.source_addresses, self.source_address_groups)[0]
+
+    def rendered_source_address_groups(self):
+        """Return the source Address Object Groups to render, leaving out every flattened group."""
+        return render_addresses(self.source_addresses, self.source_address_groups)[1]
+
+    def rendered_destination_addresses(self):
+        """Return the destination Address Objects to render, including the members of every flattened group."""
+        return render_addresses(self.destination_addresses, self.destination_address_groups)[0]
+
+    def rendered_destination_address_groups(self):
+        """Return the destination Address Object Groups to render, leaving out every flattened group."""
+        return render_addresses(self.destination_addresses, self.destination_address_groups)[1]
 
     def expanded_source_zones(self):
         """Return the source Zones with every source ZoneGroup expanded into its member Zones."""

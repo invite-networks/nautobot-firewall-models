@@ -49,18 +49,3 @@ class FQDNUIViewSet(NautobotUIViewSet):
     object_detail_content = details.fqdn
 
     lookup_field = "pk"
-
-
-class IPRangeUIViewSet(NautobotUIViewSet):
-    """ViewSet for the IPRange model."""
-
-    bulk_update_form_class = forms.IPRangeBulkEditForm
-    filterset_class = filters.IPRangeFilterSet
-    filterset_form_class = forms.IPRangeFilterForm
-    form_class = forms.IPRangeForm
-    queryset = models.IPRange.objects.all()
-    serializer_class = serializers.IPRangeSerializer
-    table_class = tables.IPRangeTable
-    object_detail_content = details.ip_range
-
-    lookup_field = "pk"

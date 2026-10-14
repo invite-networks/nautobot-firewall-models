@@ -11,14 +11,6 @@ from nautobot_firewall_models import filters, models
 from nautobot_firewall_models.api import serializers
 
 
-class IPRangeViewSet(NautobotModelViewSet):
-    """IPRange viewset."""
-
-    queryset = models.IPRange.objects.all()
-    serializer_class = serializers.IPRangeSerializer
-    filterset_class = filters.IPRangeFilterSet
-
-
 class FQDNViewSet(NautobotModelViewSet):
     """FQDN viewset."""
 
@@ -214,6 +206,22 @@ class GroupedObjectsView(APIView):
     }
     MAX_LIMIT = 1000
 
+    @staticmethod
+    def _page(sources, offset, limit):
+        """Return one page of results, paging through the groups and then the objects as if they were one list."""
+        results = []
+        for prefix, model, queryset, count in sources:
+            if offset >= count:
+                offset -= count
+                continue
+            heading = {"name": model._meta.verbose_name_plural.title()}
+            for obj in queryset[offset : offset + limit - len(results)]:
+                results.append({"id": f"{prefix}:{obj.pk}", "name": str(obj), "display": str(obj), "group": heading})
+            offset = 0
+            if len(results) >= limit:
+                break
+        return results
+
     @extend_schema(exclude=True)
     def get(self, request, kind):
         """Return one page of groups and objects matching the `q` search."""
@@ -234,19 +242,7 @@ class GroupedObjectsView(APIView):
             sources.append((prefix, model, queryset, queryset.count()))
         total = sum(count for *_rest, count in sources)
 
-        # Page through the groups, then the objects, as if they were one list.
-        results = []
-        start = offset
-        for prefix, model, queryset, count in sources:
-            if start >= count:
-                start -= count
-                continue
-            heading = {"name": model._meta.verbose_name_plural.title()}
-            for obj in queryset[start : start + limit - len(results)]:
-                results.append({"id": f"{prefix}:{obj.pk}", "name": str(obj), "display": str(obj), "group": heading})
-            start = 0
-            if len(results) >= limit:
-                break
+        results = self._page(sources, offset, limit)
 
         def page_url(page_offset):
             query = request.query_params.copy()

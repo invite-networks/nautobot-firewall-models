@@ -8,6 +8,7 @@ from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models import choices, validators
+from nautobot_firewall_models.models.mixins import ManagedLocallyGroupMixin
 from nautobot_firewall_models.utils import get_default_status
 
 ###########################
@@ -100,8 +101,10 @@ class ApplicationObject(PrimaryModel):
     "statuses",
     "webhooks",
 )
-class ApplicationObjectGroup(PrimaryModel):
+class ApplicationObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Groups together ApplicationObjects to better mimic grouping sets of application objects that have a some commonality."""
+
+    members_field = "application_objects"
 
     description = models.CharField(max_length=1024, blank=True)
     name = models.CharField(
@@ -196,8 +199,10 @@ class ServiceObject(PrimaryModel):
     "statuses",
     "webhooks",
 )
-class ServiceObjectGroup(PrimaryModel):
+class ServiceObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Groups service objects."""
+
+    members_field = "service_objects"
 
     description = models.CharField(
         max_length=1024,

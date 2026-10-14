@@ -25,12 +25,6 @@ menu_items = (
                         permissions=["nautobot_firewall_models.view_fqdn"],
                     ),
                     NavMenuItem(
-                        link="plugins:nautobot_firewall_models:iprange_list",
-                        name="IP Ranges",
-                        weight=200,
-                        permissions=["nautobot_firewall_models.view_iprange"],
-                    ),
-                    NavMenuItem(
                         link="plugins:nautobot_firewall_models:addressobject_list",
                         name="Address Objects",
                         weight=300,

@@ -3,19 +3,17 @@
 
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q
-from django.db.models.constraints import UniqueConstraint
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
 from nautobot.core.models.generics import PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
-from nautobot.ipam.fields import VarbinaryIPField
-from netaddr import IPAddress, IPNetwork
+from netaddr import IPNetwork
 
 from nautobot_firewall_models import choices
-from nautobot_firewall_models.utils import get_default_status
+from nautobot_firewall_models.models.mixins import ManagedLocallyGroupMixin
+from nautobot_firewall_models.utils import get_default_status, is_managed_locally
 
-ADDRESS_TYPES = ["fqdn", "ip_range", "ip_address", "prefix", "device", "dynamic"]
+ADDRESS_TYPES = ["fqdn", "ip_address", "prefix", "device", "dynamic"]
 
 # Reverse relations from an Address Object or Address Object Group to the rules using it. PAN-OS Policy Rules and every
 # NAT Policy Rule can not render an address that only resolves per host.
@@ -54,75 +52,6 @@ def rules_refusing_host_relative(obj):
 ###########################
 # Core Models
 ###########################
-
-
-@extras_features(
-    "custom_fields",
-    "custom_links",
-    "custom_validators",
-    "export_templates",
-    "graphql",
-    "relationships",
-    "statuses",
-    "webhooks",
-)
-class IPRange(PrimaryModel):
-    """IPRange model to track ranges of IPs in firewall rules."""
-
-    start_address = VarbinaryIPField(
-        null=False,
-        db_index=True,
-        help_text="Starting IPv4 or IPv6 host address",
-    )
-    end_address = VarbinaryIPField(
-        null=False,
-        db_index=True,
-        help_text="Ending IPv4 or IPv6 host address",
-    )
-    vrf = models.ForeignKey(
-        to="ipam.VRF", on_delete=models.PROTECT, related_name="ip_ranges", blank=True, null=True, verbose_name="VRF"
-    )
-    description = models.CharField(
-        max_length=1024,
-        blank=True,
-    )
-    size = models.PositiveIntegerField(editable=False)
-    status = StatusField(
-        on_delete=models.PROTECT,
-        related_name="%(app_label)s_%(class)s_related",  # e.g. dcim_device_related
-        default=get_default_status,
-    )
-
-    class Meta:
-        """Meta class."""
-
-        ordering = ["start_address"]
-        verbose_name = "IP Range"
-        verbose_name_plural = "IP Ranges"
-        constraints = [
-            UniqueConstraint(fields=["start_address", "end_address", "vrf"], name="unique_with_vrf"),
-            UniqueConstraint(fields=["start_address", "end_address"], condition=Q(vrf=None), name="unique_without_vrf"),
-        ]
-
-    def __str__(self):
-        """Stringify instance."""
-        return f"{self.start_address}-{self.end_address}"
-
-    def save(self, *args, **kwargs):
-        """Overloads to inject size attr."""
-        # Record the range's size (number of IP addresses)
-        self.clean()
-        self.size = int(IPAddress(self.end_address) - IPAddress(self.start_address)) + 1
-        super().save(*args, **kwargs)
-
-    def clean(self, *args, **kwargs):
-        """Overloads to validate attr for form verification."""
-        if not getattr(self, "start_address") or not getattr(self, "end_address"):
-            raise ValidationError("Must have `start_address` and `end_address`.")
-        if IPAddress(self.start_address) > IPAddress(self.end_address):
-            raise ValidationError("`end_address` must be >= than `start_address`.")
-
-        super().clean(*args, **kwargs)
 
 
 @extras_features(
@@ -177,7 +106,7 @@ class FQDN(PrimaryModel):
     "custom_links",
     "custom_validators",
     "export_templates",
-    "graphql",
+    # "graphql" is omitted on purpose: nautobot_firewall_models.graphql.types provides a custom type.
     "relationships",
     "statuses",
     "webhooks",
@@ -199,14 +128,6 @@ class AddressObject(PrimaryModel):
         blank=True,
         related_name="address_objects",
         verbose_name="FQDN",
-    )
-    ip_range = models.ForeignKey(
-        to="nautobot_firewall_models.IPRange",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="address_objects",
-        verbose_name="IP Range",
     )
     ip_address = models.ForeignKey(
         to="ipam.IPAddress",
@@ -250,7 +171,14 @@ class AddressObject(PrimaryModel):
         for key in ADDRESS_TYPES:
             if getattr(self, key):
                 return (key, getattr(self, key))
+        if self.is_managed_locally:
+            return ("managed locally", "defined on the firewall")
         return (None, None)
+
+    @property
+    def is_managed_locally(self):
+        """Whether the firewall defines this object, so Nautobot only holds its name."""
+        return is_managed_locally(self.status) if self.status_id else False
 
     def __str__(self):
         """Stringify instance."""
@@ -264,7 +192,12 @@ class AddressObject(PrimaryModel):
     def clean(self, *args, **kwargs):
         """Overloads to validate attr for form verification."""
         address_count = sum(1 for i in ADDRESS_TYPES if getattr(self, i, None))
-        if address_count != 1:
+        if self.is_managed_locally:
+            if address_count:
+                raise ValidationError(
+                    "A Managed Locally Address Object is defined on the firewall, so it has no address."
+                )
+        elif address_count != 1:
             raise ValidationError(f"Must specify only one address from type {ADDRESS_TYPES}, {address_count} found.")
         if self.is_host_relative:
             rules = set(rules_refusing_host_relative(self))
@@ -315,13 +248,15 @@ class AddressObject(PrimaryModel):
     "custom_links",
     "custom_validators",
     "export_templates",
-    "graphql",
+    # "graphql" is omitted on purpose: nautobot_firewall_models.graphql.types provides a custom type.
     "relationships",
     "statuses",
     "webhooks",
 )
-class AddressObjectGroup(PrimaryModel):
+class AddressObjectGroup(ManagedLocallyGroupMixin, PrimaryModel):
     """Groups together AddressObjects to better mimic grouping sets of address objects that have a some commonality."""
+
+    members_field = "address_objects"
 
     description = models.CharField(
         max_length=1024,
@@ -335,6 +270,10 @@ class AddressObjectGroup(PrimaryModel):
         related_name="address_object_groups",
         blank=True,
         verbose_name="Address Objects",
+    )
+    flatten = models.BooleanField(
+        default=False,
+        help_text="When a rule is rendered, list this group's Address Objects in place of the group itself.",
     )
     status = StatusField(
         on_delete=models.PROTECT,
@@ -352,6 +291,14 @@ class AddressObjectGroup(PrimaryModel):
         """Stringify instance."""
         return self.name
 
+    def clean(self):
+        """A Managed Locally group has no members in Nautobot to flatten into."""
+        super().clean()
+        if self.flatten and self.status_id and is_managed_locally(self.status):
+            raise ValidationError(
+                {"flatten": "A Managed Locally group has no members here, so it can not be flattened."}
+            )
+
     def validate_address_objects(self, address_objects):
         """Refuse host relative Address Objects while a PAN-OS or NAT Policy Rule uses this group."""
         names = host_relative_names(address_objects)
@@ -363,3 +310,17 @@ class AddressObjectGroup(PrimaryModel):
                     f"{', '.join(rules)}."
                 }
             )
+
+
+def render_addresses(address_objects, address_groups):
+    """Return the Address Objects and Address Object Groups a rule side is rendered with.
+
+    Each flattened group is replaced by its Address Objects. A flattened group that is empty stays a group, so the
+    rule never silently widens to any address.
+    """
+    groups = list(address_groups.all())
+    flattened = [i.pk for i in groups if i.flatten and i.address_objects.exists()]
+    objects = AddressObject.objects.filter(
+        models.Q(pk__in=address_objects.values("pk")) | models.Q(address_object_groups__in=flattened)
+    ).distinct()
+    return objects, AddressObjectGroup.objects.filter(pk__in=[i.pk for i in groups if i.pk not in flattened])

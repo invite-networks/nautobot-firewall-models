@@ -54,9 +54,8 @@ Example GraphQL query showing how to get instances for each of the models provid
         ip_address {
           address
         }
-        ip_range {
-          start_address
-          end_address
+        prefix {
+          prefix
         }
       }
       source_address_group {
@@ -64,9 +63,8 @@ Example GraphQL query showing how to get instances for each of the models provid
           ip_address {
             address
           }
-          ip_range {
-            start_address
-            end_address
+          prefix {
+            prefix
           }
         }
       }
@@ -86,9 +84,8 @@ Example GraphQL query showing how to get instances for each of the models provid
         ip_address {
           address
         }
-        ip_range {
-          start_address
-          end_address
+        prefix {
+          prefix
         }
       }
       destination_address_group {
@@ -96,9 +93,8 @@ Example GraphQL query showing how to get instances for each of the models provid
           ip_address {
             address
           }
-          ip_range {
-            start_address
-            end_address
+          prefix {
+            prefix
           }
         }
       }
@@ -108,6 +104,8 @@ Example GraphQL query showing how to get instances for each of the models provid
 ```
 
 A rule can reference Zones directly, Zone Groups, or both. The `expanded_source_zones` and `expanded_destination_zones` fields return the combined, de-duplicated list of Zones with every Zone Group resolved into its members, which is what deployment tooling should use. An empty list means no Zone was set (implicit any). The same fields are available on NAT Policy Rules and in the REST API.
+
+Policy Rules also return `rendered_source_addresses`, `rendered_source_address_groups`, `rendered_destination_addresses` and `rendered_destination_address_groups` over REST and GraphQL. They are the rule's addresses as deployment tooling should write them: every Address Object Group with Flatten set is replaced by its Address Objects, and other groups are kept. Address Objects and groups with the Managed Locally status are defined on the firewall, so tooling references them by name and never creates them.
 
 Policy Rules are returned in firewall order: by Policy Band index, then Header before Closer, then rule index, then name. Filter with `device` to get the merged, de-duplicated rule list for one Device across every Policy assigned to it directly or through a Dynamic Group. For example, `/api/plugins/firewall/policy-rule/?device=DFW-WAN00`, or `policy_rules(device: "DFW-WAN00")` in GraphQL.
 
@@ -174,9 +172,8 @@ Policy Rules are returned in firewall order: by Policy Band index, then Header b
             "source_address": [
               {
                 "ip_address": null,
-                "ip_range": {
-                  "start_address": "192.168.0.11",
-                  "end_address": "192.168.0.20"
+                "prefix": {
+                  "prefix": "192.168.0.0/24"
                 }
               }
             ],
@@ -185,16 +182,15 @@ Policy Rules are returned in firewall order: by Policy Band index, then Header b
                 "address_objects": [
                   {
                     "ip_address": null,
-                    "ip_range": {
-                      "start_address": "192.168.0.11",
-                      "end_address": "192.168.0.20"
+                    "prefix": {
+                      "prefix": "192.168.0.0/24"
                     }
                   },
                   {
                     "ip_address": {
                       "address": "10.0.0.1/32"
                     },
-                    "ip_range": null
+                    "prefix": null
                   }
                 ]
               }
@@ -213,7 +209,7 @@ Policy Rules are returned in firewall order: by Policy Band index, then Header b
             "destination_address": [
               {
                 "ip_address": null,
-                "ip_range": null
+                "prefix": null
               }
             ],
             "destination_address_group": [
@@ -221,24 +217,23 @@ Policy Rules are returned in firewall order: by Policy Band index, then Header b
                 "address_objects": [
                   {
                     "ip_address": null,
-                    "ip_range": {
-                      "start_address": "192.168.0.11",
-                      "end_address": "192.168.0.20"
+                    "prefix": {
+                      "prefix": "192.168.0.0/24"
                     }
                   },
                   {
                     "ip_address": null,
-                    "ip_range": null
+                    "prefix": null
                   },
                   {
                     "ip_address": null,
-                    "ip_range": null
+                    "prefix": null
                   },
                   {
                     "ip_address": {
                       "address": "10.0.0.1/32"
                     },
-                    "ip_range": null
+                    "prefix": null
                   }
                 ]
               }

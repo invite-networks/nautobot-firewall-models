@@ -12,15 +12,6 @@ from nautobot.tenancy.models import Tenant, TenantGroup
 from nautobot_firewall_models.models import *  # pylint: disable=unused-wildcard-import, wildcard-import
 
 
-def create_ip_range():
-    """Creates 3 IPRange objects."""
-    status = Status.objects.get(name="Active")
-    vrf, _ = VRF.objects.get_or_create(name="random_vrf")
-    IPRange.objects.get_or_create(start_address="192.168.0.1", end_address="192.168.0.10", vrf=None, status=status)
-    IPRange.objects.get_or_create(start_address="192.168.0.1", end_address="192.168.0.10", vrf=vrf, status=status)
-    return IPRange.objects.get_or_create(start_address="192.168.0.11", end_address="192.168.0.20", status=status)[0]
-
-
 def create_fqdn():
     """Creates 3 FQDN objects."""
     status = Status.objects.get(name="Active")
@@ -36,11 +27,11 @@ def create_addr_obj():
     namespace, _ = Namespace.objects.get_or_create(name="global")
     prefix, _ = Prefix.objects.get_or_create(network="10.0.0.0", prefix_length=24, namespace=namespace, status=status)
     ip_address, _ = IPAddr.objects.get_or_create(address="10.0.0.1", status=status, parent=prefix)
+    printer_ip, _ = IPAddr.objects.get_or_create(address="10.0.0.2", status=status, parent=prefix)
 
     # Plugin Models
-    ip_range = create_ip_range()
     fqdn = create_fqdn()
-    addr_obj1, _ = AddressObject.objects.get_or_create(name="printer", ip_range=ip_range, status=status)
+    addr_obj1, _ = AddressObject.objects.get_or_create(name="printer", ip_address=printer_ip, status=status)
     addr_obj2, _ = AddressObject.objects.get_or_create(name="voice", ip_address=ip_address, status=status)
     addr_obj3, _ = AddressObject.objects.get_or_create(name="storage", prefix=prefix, status=status)
     addr_obj4, _ = AddressObject.objects.get_or_create(name="server", fqdn=fqdn, status=status)
@@ -479,7 +470,6 @@ def create_sample_env():
     prefix, _ = Prefix.objects.get_or_create(network="10.1.0.0", prefix_length=24, status=status, namespace=namespace)
 
     addr_obj1 = AddressObject.objects.get(name="printer")
-    addr_obj1.ip_range = None
     addr_obj1.ip_address = ip_address
     addr_obj1.validated_save()
 

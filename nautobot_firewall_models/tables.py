@@ -7,21 +7,6 @@ from nautobot.extras.tables import StatusTableMixin
 from nautobot_firewall_models import models
 
 
-class IPRangeTable(StatusTableMixin, BaseTable):
-    """Table for list view."""
-
-    pk = ToggleColumn()
-    start_address = tables.Column(linkify=True)
-    vrf = tables.LinkColumn()
-    actions = ButtonsColumn(models.IPRange, buttons=("edit", "delete"))
-
-    class Meta(BaseTable.Meta):
-        """Meta attributes."""
-
-        model = models.IPRange
-        fields = ("pk", "start_address", "end_address", "vrf", "size", "description", "status")
-
-
 class FQDNTable(StatusTableMixin, BaseTable):
     """Table for list view."""
 
@@ -53,7 +38,6 @@ class AddressObjectTable(StatusTableMixin, BaseTable):
             "name",
             "description",
             "ip_address",
-            "ip_range",
             "prefix",
             "fqdn",
             "device",
@@ -73,7 +57,7 @@ class AddressObjectGroupTable(StatusTableMixin, BaseTable):
         """Meta attributes."""
 
         model = models.AddressObjectGroup
-        fields = ("pk", "name", "description", "address_objects", "status")
+        fields = ("pk", "name", "description", "address_objects", "flatten", "status")
 
 
 class ApplicationObjectTable(StatusTableMixin, BaseTable):
@@ -231,12 +215,14 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             "source_user_groups",
             "source_addresses",
             "source_address_groups",
+            "negate_source",
             "source_zones",
             "source_zone_groups",
             "source_services",
             "source_service_groups",
             "destination_addresses",
             "destination_address_groups",
+            "negate_destination",
             "destination_zones",
             "destination_zone_groups",
             "destination_services",
@@ -262,12 +248,14 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             "source_user_groups",
             "source_addresses",
             "source_address_groups",
+            "negate_source",
             "source_zones",
             "source_zone_groups",
             "source_services",
             "source_service_groups",
             "destination_addresses",
             "destination_address_groups",
+            "negate_destination",
             "destination_zones",
             "destination_zone_groups",
             "destination_services",

@@ -112,11 +112,6 @@ This plugin uses [custom models to model many-to-many](https://docs.djangoprojec
 %}
 
 {%
-    include-markdown "./models/iprange.md"
-    heading-offset=2
-%}
-
-{%
     include-markdown "./models/zone.md"
     heading-offset=2
 %}

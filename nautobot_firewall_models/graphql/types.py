@@ -1,6 +1,7 @@
 """GraphQL types for nautobot_firewall_models.
 
-PolicyRule and NATPolicyRule get custom types so they can expose their zones with every ZoneGroup expanded.
+PolicyRule and NATPolicyRule get custom types so they can expose their zones with every ZoneGroup expanded, and
+PolicyRule its addresses as rendered, with every flattened Address Object Group replaced by its members.
 """
 
 import graphene
@@ -17,6 +18,55 @@ class ZoneType(OptimizedNautobotObjectType):
 
         model = models.Zone
         filterset_class = filters.ZoneFilterSet
+
+
+class AddressObjectType(OptimizedNautobotObjectType):
+    """GraphQL type for AddressObject."""
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.AddressObject
+        filterset_class = filters.AddressObjectFilterSet
+
+
+class AddressObjectGroupType(OptimizedNautobotObjectType):
+    """GraphQL type for AddressObjectGroup."""
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.AddressObjectGroup
+        filterset_class = filters.AddressObjectGroupFilterSet
+
+
+class RenderedAddressesMixin:
+    """Expose a rule's addresses as rendered: each flattened Address Object Group replaced by its members."""
+
+    rendered_source_addresses = graphene.List(AddressObjectType)
+    rendered_source_address_groups = graphene.List(AddressObjectGroupType)
+    rendered_destination_addresses = graphene.List(AddressObjectType)
+    rendered_destination_address_groups = graphene.List(AddressObjectGroupType)
+
+    @staticmethod
+    def resolve_rendered_source_addresses(root, _info):
+        """Resolve the rendered source addresses."""
+        return root.rendered_source_addresses()
+
+    @staticmethod
+    def resolve_rendered_source_address_groups(root, _info):
+        """Resolve the rendered source address groups."""
+        return root.rendered_source_address_groups()
+
+    @staticmethod
+    def resolve_rendered_destination_addresses(root, _info):
+        """Resolve the rendered destination addresses."""
+        return root.rendered_destination_addresses()
+
+    @staticmethod
+    def resolve_rendered_destination_address_groups(root, _info):
+        """Resolve the rendered destination address groups."""
+        return root.rendered_destination_address_groups()
 
 
 class ExpandedZonesMixin:
@@ -36,7 +86,7 @@ class ExpandedZonesMixin:
         return root.expanded_destination_zones()
 
 
-class PolicyRuleType(ExpandedZonesMixin, OptimizedNautobotObjectType):
+class PolicyRuleType(ExpandedZonesMixin, RenderedAddressesMixin, OptimizedNautobotObjectType):
     """GraphQL type for PolicyRule."""
 
     class Meta:
@@ -56,4 +106,4 @@ class NATPolicyRuleType(ExpandedZonesMixin, OptimizedNautobotObjectType):
         filterset_class = filters.NATPolicyRuleFilterSet
 
 
-graphql_types = [ZoneType, PolicyRuleType, NATPolicyRuleType]
+graphql_types = [ZoneType, AddressObjectType, AddressObjectGroupType, PolicyRuleType, NATPolicyRuleType]

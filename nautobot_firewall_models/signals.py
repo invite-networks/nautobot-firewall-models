@@ -9,7 +9,11 @@ from nautobot.ipam.models import VRF, IPAddress, Prefix
 
 from nautobot_firewall_models import models
 from nautobot_firewall_models.constants import PLUGIN_CFG
-from nautobot_firewall_models.utils import create_configured_statuses, get_firewall_models_with_status_field
+from nautobot_firewall_models.utils import (
+    create_configured_statuses,
+    create_managed_locally_status,
+    get_firewall_models_with_status_field,
+)
 
 ON_DELETE = {
     IPAddress: ["fqdns", "address_objects"],
@@ -18,7 +22,6 @@ ON_DELETE = {
     Device: ["zones", "address_objects"],
     Interface: ["zones"],
     models.FQDN: ["address_objects"],
-    models.IPRange: ["address_objects"],
     models.AddressObject: [
         "address_object_groups",
         "source_policy_rules",
@@ -96,7 +99,6 @@ if PLUGIN_CFG["protect_on_delete"]:
     @receiver(pre_delete, sender=Device)
     @receiver(pre_delete, sender=Interface)
     @receiver(pre_delete, sender=models.FQDN)
-    @receiver(pre_delete, sender=models.IPRange)
     @receiver(pre_delete, sender=models.AddressObject)
     @receiver(pre_delete, sender=models.AddressObjectGroup)
     @receiver(pre_delete, sender=models.ServiceObject)
@@ -116,7 +118,13 @@ if PLUGIN_CFG["protect_on_delete"]:
                 raise ValidationError(f"{instance} is assigned to an {i} & `protect_on_delete` is enabled.")
 
 
-# Many-to-many assignments that depend on a rule type or on host relative Address Objects. Forms and the REST API run
+def check_address_group_members(group, _field, objects):
+    """Refuse members on a Managed Locally group, and host relative ones while a PAN-OS or NAT rule uses the group."""
+    group.validate_managed_members(group.status, objects)
+    group.validate_address_objects(objects)
+
+
+# Many-to-many assignments that depend on a rule type, host relative Address Objects or Managed Locally groups. Forms and the REST API run
 # the same checks first for friendly errors; this catches every other path, such as bulk edit and scripts.
 # Each entry maps a through model to (field name, check), and check(owner, field, objects) raises ValidationError.
 M2M_CHECKS = {
@@ -138,10 +146,14 @@ M2M_CHECKS = {
         )
         for field in (*models.NATPolicyRule.UNSUPPORTED_RELATIONS, *models.NATPolicyRule.ADDRESS_RELATIONS)
     },
-    models.AddressObjectGroup.address_objects.through: (
-        "address_objects",
-        lambda group, _field, objects: group.validate_address_objects(objects),
-    ),
+    models.AddressObjectGroup.address_objects.through: ("address_objects", check_address_group_members),
+    **{
+        getattr(group, group.members_field).through: (
+            group.members_field,
+            lambda group, _field, objects: group.validate_managed_members(group.status, objects),
+        )
+        for group in (models.ServiceObjectGroup, models.ApplicationObjectGroup, models.UserObjectGroup)
+    },
     models.Policy.policy_rules.through: (
         "policy_rules",
         lambda policy, _field, objects: models.Policy.validate_policy_rules(policy.rule_type, objects),
@@ -173,6 +185,7 @@ def create_configured_statuses_signal(sender, **kwargs):  # pylint: disable=unus
 
 def associate_statuses_signal(sender, **kwargs):  # pylint: disable=unused-argument
     """Signal handler to associate some common statuses with the firewall model content types."""
+    create_managed_locally_status()
     for status in Status.objects.filter(name__in=["Active", "Staged", "Decommissioned"]):
         content_types = get_firewall_models_with_status_field()
         status.content_types.add(*content_types)

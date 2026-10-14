@@ -39,6 +39,12 @@ Version 4.2 adds a required rule type, `panos` or `nftables`, to Policy Rules an
 
 Integrations must now send `rule_type` when creating Policy Rules and Policies. nftables rules take a `chain` instead of `band` and `position`, and a Policy only accepts rules of its own type.
 
+## Upgrade 4.2 to 4.3
+
+Version 4.3 removes IP Ranges. The migration stops if any IP Ranges exist. Change every Address Object that uses one to a Prefix, IP Address or FQDN, delete the IP Ranges, then upgrade. Integrations that call `/api/plugins/firewall/ip-range/` or read `ip_range` on Address Objects must be updated.
+
+The migration also creates the Managed Locally status and adds the negate and flatten fields with defaults of false, so no other step is needed.
+
 ## Upgrade Guide
 
 When a new release comes out it may be necessary to run a migration of the database to account for any changes in the data models used by this app. Execute the command `nautobot-server post-upgrade` within the runtime environment of your Nautobot installation after updating the `nautobot-firewall-models` package via `pip`.

@@ -118,7 +118,6 @@ nav:
           - Application Object: "dev/models/applicationobject.md"
           - Application Object Group: "dev/models/applicationobjectgroup.md"
           - FQDN: "dev/models/fqdn.md"
-          - IP Range: "dev/models/iprange.md"
           - NAT Policy: "dev/models/natpolicy.md"
           - NAT Policy Device M2M: "dev/models/natpolicydevicem2m.md"
           - NAT Policy Dynamic Group M2M: "dev/models/natpolicydynamicgroupm2m.md"
@@ -140,6 +139,7 @@ nav:
       - Compatibility Matrix: "admin/compatibility_matrix.md"
       - Release Notes:
           - "admin/release_notes/index.md"
+          - v4.3: "admin/release_notes/version_4.3.md"
           - v4.2: "admin/release_notes/version_4.2.md"
           - v4.1: "admin/release_notes/version_4.1.md"
           - v4.0: "admin/release_notes/version_4.0.md"

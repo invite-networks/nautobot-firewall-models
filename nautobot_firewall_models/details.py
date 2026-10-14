@@ -121,7 +121,7 @@ address_object_group = ui.ObjectDetailContent(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed
-            fields=["name", "description", "status"],
+            fields=["name", "description", "flatten", "status"],
         ),
         ui.ObjectsTablePanel(
             weight=100,
@@ -185,17 +185,6 @@ fqdn = ui.ObjectDetailContent(
     ),
 )
 
-
-ip_range = ui.ObjectDetailContent(
-    panels=(
-        ui.ObjectFieldsPanel(
-            section=ui.SectionChoices.LEFT_HALF,
-            weight=100,
-            # Replace with `__all__` once order is fixed
-            fields=["description", "start_address", "end_address", "size", "vrf", "status"],
-        ),
-    ),
-)
 
 nat_policy = ui.ObjectDetailContent(
     panels=(
@@ -353,7 +342,18 @@ policy_rule = ui.ObjectDetailContent(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
             # Replace with `__all__` once order is fixed, needs additional_fields=["ip_addresses"]
-            fields=["rule_type", "band", "position", "chain", "index", "description", "policies__all", "status"],
+            fields=[
+                "rule_type",
+                "band",
+                "position",
+                "chain",
+                "index",
+                "negate_source",
+                "negate_destination",
+                "description",
+                "policies__all",
+                "status",
+            ],
             key_transforms={"policies__all": "Assigned Policies"},
         ),
         ui.Panel(

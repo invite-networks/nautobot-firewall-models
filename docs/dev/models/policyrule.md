@@ -21,6 +21,10 @@ It is recommended to use a descriptive name to best identify a PolicyRule, other
 * Source Zone (FK to Zone)
 * Service (M2M to ServiceObject)
 * Service Group (M2M to ServiceObjectGroup)
+* Negate Source (boolean, PAN-OS only, default false)
+    * Matches every source except the addresses set.
+* Negate Destination (boolean, PAN-OS only, default false)
+    * Matches every destination except the addresses set.
 * Action (string, choice of deny drop allow)
 * Log (boolean)
 * Request ID (optional, string)
@@ -39,7 +43,7 @@ Rules are ordered by band index (nftables rules have none and sort last), then H
 ## Rule Types
 
 * PAN-OS rules may use every field except Chain, Source Services and Source Service Groups. PAN-OS security rules match on destination service only.
-* nftables rules are host firewall rules. They may not use zones, zone groups, users, user groups, applications, application groups, a band, a position or the remark action.
+* nftables rules are host firewall rules. They may not use zones, zone groups, users, user groups, applications, application groups, a band, a position, negation or the remark action.
 * Address Objects that reference a Device or the dynamic Subnet only resolve per host, so they may only be used on nftables rules, directly or inside an Address Object Group.
 * A Policy holds rules of a single type, set by the Policy's own Rule Type.
 

@@ -7,55 +7,27 @@ from rest_framework import serializers
 from nautobot_firewall_models import models
 
 
+class ManagedLocallyGroupSerializerMixin:
+    """Refuse members on a group whose status is Managed Locally."""
+
+    def validate(self, attrs):
+        """Check the resulting status and members together, using saved values for fields a PATCH leaves out."""
+        model = self.Meta.model
+        status = attrs.get("status", self.instance.status if self.instance else None)
+        if model.members_field in attrs:
+            members = attrs[model.members_field]
+        else:
+            members = getattr(self.instance, model.members_field).all() if self.instance else []
+        run_model_check(model.validate_managed_members, status, members)
+        return super().validate(attrs)
+
+
 def run_model_check(check, *args):
     """Run a model validation function and report its errors the way the REST API expects."""
     try:
         check(*args)
     except DjangoValidationError as e:
         raise serializers.ValidationError(e.message_dict) from e
-
-
-class IPRangeSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):  # pylint: disable=too-many-ancestors
-    """IPRange Serializer."""
-
-    start_address = serializers.CharField()
-    end_address = serializers.CharField()
-
-    class Meta:
-        """Meta attributes."""
-
-        model = models.IPRange
-        fields = "__all__"
-
-        # Omit the UniqueTogetherValidators that would be automatically added to validate (start_address, end_address, vrf).
-        # This prevents vrf from being interpreted as a required field.
-        validators = []
-
-    def validate(self, attrs):
-        """Custom validate method to enforce unique constraints on IPRange model."""
-        # Validate uniqueness of (start_address, end_address, vrf) since we omitted the automatically-created validator above.
-        start_address = attrs.get("start_address")
-        end_address = attrs.get("end_address")
-        vrf = attrs.get("vrf")
-        if not any([start_address is not None, end_address is not None, vrf is not None]):
-            return super().validate(attrs)
-
-        # Use existing object's attributes for partial updates
-        if self.instance:
-            start_address = start_address or self.instance.start_address
-            end_address = end_address or self.instance.end_address
-            vrf = vrf or self.instance.vrf
-            qs = models.IPRange.objects.exclude(pk=self.instance.pk)
-        else:
-            qs = models.IPRange.objects.all()
-
-        if vrf is not None:
-            if qs.filter(start_address=start_address, end_address=end_address, vrf=vrf).exists():
-                raise serializers.ValidationError("The fields start_address, end_address, vrf must make a unique set.")
-        elif qs.filter(start_address=start_address, end_address=end_address, vrf__isnull=True).exists():
-            raise serializers.ValidationError("The fields start_address, end_address must make a unique set.")
-
-        return super().validate(attrs)
 
 
 class FQDNSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
@@ -78,7 +50,9 @@ class AddressObjectSerializer(NautobotModelSerializer, TaggedModelSerializerMixi
         fields = "__all__"
 
 
-class AddressObjectGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+class AddressObjectGroupSerializer(
+    ManagedLocallyGroupSerializerMixin, NautobotModelSerializer, TaggedModelSerializerMixin
+):
     """AddressObjectGroup Serializer."""
 
     class Meta:
@@ -104,7 +78,9 @@ class ApplicationObjectSerializer(NautobotModelSerializer, TaggedModelSerializer
         fields = "__all__"
 
 
-class ApplicationObjectGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+class ApplicationObjectGroupSerializer(
+    ManagedLocallyGroupSerializerMixin, NautobotModelSerializer, TaggedModelSerializerMixin
+):
     """ApplicationObjectGroup Serializer."""
 
     class Meta:
@@ -124,7 +100,9 @@ class ServiceObjectSerializer(NautobotModelSerializer, TaggedModelSerializerMixi
         fields = "__all__"
 
 
-class ServiceObjectGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+class ServiceObjectGroupSerializer(
+    ManagedLocallyGroupSerializerMixin, NautobotModelSerializer, TaggedModelSerializerMixin
+):
     """ServiceObjectGroup Serializer."""
 
     class Meta:
@@ -144,7 +122,9 @@ class UserObjectSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         fields = "__all__"
 
 
-class UserObjectGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+class UserObjectGroupSerializer(
+    ManagedLocallyGroupSerializerMixin, NautobotModelSerializer, TaggedModelSerializerMixin
+):
     """UserObjectGroup Serializer."""
 
     class Meta:
@@ -186,6 +166,34 @@ class ExpandedZoneSerializer(serializers.ModelSerializer):
         fields = ["id", "url", "name"]
 
 
+class RenderedAddressObjectSerializer(serializers.ModelSerializer):
+    """Read-only Address Object representation for a rule's rendered addresses."""
+
+    url = serializers.HyperlinkedIdentityField(
+        view_name="plugins-api:nautobot_firewall_models-api:addressobject-detail"
+    )
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.AddressObject
+        fields = ["id", "url", "name"]
+
+
+class RenderedAddressObjectGroupSerializer(serializers.ModelSerializer):
+    """Read-only Address Object Group representation for a rule's rendered address groups."""
+
+    url = serializers.HyperlinkedIdentityField(
+        view_name="plugins-api:nautobot_firewall_models-api:addressobjectgroup-detail"
+    )
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.AddressObjectGroup
+        fields = ["id", "url", "name"]
+
+
 class PolicyBandSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """PolicyBand Serializer."""
 
@@ -202,6 +210,10 @@ class PolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     index = serializers.IntegerField(required=False, default=None)
     expanded_source_zones = ExpandedZoneSerializer(many=True, read_only=True)
     expanded_destination_zones = ExpandedZoneSerializer(many=True, read_only=True)
+    rendered_source_addresses = RenderedAddressObjectSerializer(many=True, read_only=True)
+    rendered_source_address_groups = RenderedAddressObjectGroupSerializer(many=True, read_only=True)
+    rendered_destination_addresses = RenderedAddressObjectSerializer(many=True, read_only=True)
+    rendered_destination_address_groups = RenderedAddressObjectGroupSerializer(many=True, read_only=True)
 
     class Meta:
         """Meta attributes."""

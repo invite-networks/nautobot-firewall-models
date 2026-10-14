@@ -3,12 +3,11 @@
 # pylint: disable=invalid-name, duplicate-code
 from unittest import mock
 
-from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
-from nautobot.apps.testing import APITestCase, APIViewTestCases, disable_warnings
+from nautobot.apps.testing import APITestCase, APIViewTestCases
 from nautobot.dcim.models import Device, DeviceType, Location, Platform
 from nautobot.extras.models import Role, Status
-from nautobot.ipam.models import VRF, Prefix
+from nautobot.ipam.models import Prefix
 from nautobot.users.models import ObjectPermission
 from rest_framework import status as drf_status
 
@@ -31,108 +30,6 @@ class IncludeM2MAPITestCaseMixin:
     def test_bulk_create_objects(self):
         with mock.patch.object(self, "_get_list_url", self._patched_get_list_url):
             return super().test_bulk_create_objects()
-
-
-class IPRangeAPIViewTest(APIViewTestCases.APIViewTestCase):
-    """Test the IPRange viewsets."""
-
-    model = models.IPRange
-    brief_fields = ["display", "end_address", "id", "start_address", "url"]
-    bulk_update_data = {"description": "test update description"}
-
-    @classmethod
-    def setUpTestData(cls):
-        """Create test data for API calls."""
-        cls.create_data = [
-            {"start_address": "10.0.0.1", "end_address": "10.0.0.3"},
-            {"start_address": "10.0.0.4", "end_address": "10.0.0.10"},
-        ]
-        fixtures.create_ip_range()
-
-    def test_unique_validators(self):
-        """Test the unique validators for IPRange."""
-        # Add object-level permission
-        obj_perm = ObjectPermission(name="Test permission", actions=["add", "change", "view"])
-        obj_perm.save()
-        obj_perm.users.add(self.user)
-        obj_perm.object_types.add(ContentType.objects.get_for_model(self.model))
-        obj_perm.object_types.add(ContentType.objects.get_for_model(VRF))
-
-        vrfs = (
-            VRF.objects.create(name="test vrf 1"),
-            VRF.objects.create(name="test vrf 2"),
-        )
-
-        url = self._get_list_url()
-
-        # Create an IPRange object with a vrf
-        models.IPRange.objects.create(start_address="1.0.0.1", end_address="1.0.0.8", vrf=vrfs[0])
-
-        initial_count = self._get_queryset().count()
-
-        # Create an IPRange object with the same start and end address but a different vrf
-        with disable_warnings("django.request"):
-            data = {"start_address": "1.0.0.1", "end_address": "1.0.0.8", "vrf": vrfs[1].pk}
-            response = self.client.post(url, data, format="json", **self.header)
-            self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
-            self.assertEqual(self._get_queryset().count(), initial_count + 1)
-
-        # Creating an IPRange object with the same start and end address and the same vrf fails
-        with disable_warnings("django.request"):
-            data = {"start_address": "1.0.0.1", "end_address": "1.0.0.8", "vrf": vrfs[0].pk}
-            response = self.client.post(url, data, format="json", **self.header)
-            self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
-            self.assertIn("non_field_errors", response.data)
-            self.assertEqual(
-                "The fields start_address, end_address, vrf must make a unique set.",
-                response.data["non_field_errors"][0],
-            )
-            self.assertEqual(self._get_queryset().count(), initial_count + 1)
-
-        # Create another IPRange object with no vrf
-        models.IPRange.objects.create(start_address="2.0.0.1", end_address="2.0.0.8")
-
-        # Creating an IPRange object with the same start and end address with no vrf fails
-        with disable_warnings("django.request"):
-            data = {"start_address": "2.0.0.1", "end_address": "2.0.0.8"}
-            response = self.client.post(url, data, format="json", **self.header)
-            self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
-            self.assertIn("non_field_errors", response.data)
-            self.assertEqual(
-                "The fields start_address, end_address must make a unique set.",
-                response.data["non_field_errors"][0],
-            )
-            self.assertEqual(self._get_queryset().count(), initial_count + 2)
-
-        # Create an IPRange object with the same start and end address with a vrf
-        with disable_warnings("django.request"):
-            data = {"start_address": "2.0.0.1", "end_address": "2.0.0.8", "vrf": vrfs[0].pk}
-            response = self.client.post(url, data, format="json", **self.header)
-            self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
-            self.assertEqual(self._get_queryset().count(), initial_count + 3)
-
-        # Patching an existing object to violate uniqueness constraints also fails validation
-        ip_ranges = (
-            models.IPRange.objects.create(start_address="123.0.0.1", end_address="123.0.0.10"),
-            models.IPRange.objects.create(start_address="123.0.0.11", end_address="123.0.0.20"),
-        )
-        with disable_warnings("django.request"):
-            data = {"start_address": ip_ranges[0].start_address, "end_address": ip_ranges[0].end_address}
-            url = self._get_detail_url(ip_ranges[1])
-
-            response = self.client.patch(url, data, format="json", **self.header)
-            self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
-            self.assertIn("non_field_errors", response.data)
-            self.assertEqual(
-                "The fields start_address, end_address must make a unique set.",
-                response.data["non_field_errors"][0],
-            )
-
-            # Using a different vrf works
-            data["vrf"] = vrfs[0].pk
-            response = self.client.patch(url, data, format="json", **self.header)
-            self.assertHttpStatus(response, drf_status.HTTP_200_OK)
-            self.assertEqual(response.data["vrf"]["id"], vrfs[0].pk)
 
 
 class FQDNAPIViewTest(APIViewTestCases.APIViewTestCase):
@@ -203,7 +100,7 @@ class AddressObjectAPIViewTest(APIViewTestCases.APIViewTestCase):
     def setUpTestData(cls):
         """Create test data for API calls."""
         fixtures.create_addr_obj()
-        ip_range = models.IPRange.objects.first()
+        fqdn = models.FQDN.objects.first()
         prefix = Prefix.objects.first()
         models.AddressObject.objects.create(name="deleteableobj1", prefix=prefix)
         models.AddressObject.objects.create(name="deleteableobj2", prefix=prefix)
@@ -211,7 +108,7 @@ class AddressObjectAPIViewTest(APIViewTestCases.APIViewTestCase):
 
         cls.create_data = [
             {"name": "obj2", "prefix": prefix.id},
-            {"name": "obj1", "ip_range": ip_range.id},
+            {"name": "obj1", "fqdn": fqdn.id},
         ]
 
 
@@ -917,3 +814,111 @@ class GroupedObjectsAPITest(APITestCase):
         """Every picker kind has a working search."""
         for kind in ("zones", "addresses", "services", "users", "applications"):
             self.assertHttpStatus(self._get(kind=kind), drf_status.HTTP_200_OK)
+
+
+class ManagedLocallyAPITest(APITestCase):
+    """Test the REST API errors for Managed Locally groups."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a group with a member and a Managed Locally status."""
+        cls.managed = Status.objects.get(name="Managed Locally")
+        cls.member = models.ServiceObject.objects.create(name="HTTPS", port="443", ip_protocol="TCP")
+        cls.group = models.ServiceObjectGroup.objects.create(name="web")
+        cls.group.service_objects.add(cls.member)
+
+    def setUp(self):
+        """Grant access to Service Object Groups."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_serviceobjectgroup",
+            "nautobot_firewall_models.change_serviceobjectgroup",
+            "nautobot_firewall_models.view_serviceobjectgroup",
+            "nautobot_firewall_models.view_serviceobject",
+            "extras.view_status",
+        )
+
+    def _url(self, pk=None):
+        if pk:
+            return reverse("plugins-api:nautobot_firewall_models-api:serviceobjectgroup-detail", kwargs={"pk": pk})
+        return reverse("plugins-api:nautobot_firewall_models-api:serviceobjectgroup-list")
+
+    def test_create_managed_locally_group_with_members_is_refused(self):
+        """A new Managed Locally group with members is refused."""
+        response = self.client.post(
+            self._url(),
+            {"name": "local", "status": str(self.managed.pk), "service_objects": [str(self.member.pk)]},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("service_objects", response.data)
+
+    def test_marking_a_group_with_members_managed_locally_is_refused(self):
+        """Changing a group that still has members to Managed Locally is refused."""
+        response = self.client.patch(
+            self._url(self.group.pk), {"status": str(self.managed.pk)}, format="json", **self.header
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+
+    def test_marking_an_emptied_group_managed_locally(self):
+        """Clearing the members and marking the group Managed Locally in one request works."""
+        response = self.client.patch(
+            self._url(self.group.pk),
+            {"status": str(self.managed.pk), "service_objects": []},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+
+
+class RenderedAddressesAPITest(APITestCase):
+    """Test that rules expose their rendered addresses over REST and GraphQL."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create a rule whose source uses a flattened group of two countries."""
+        managed = Status.objects.get(name="Managed Locally")
+        countries = models.AddressObjectGroup.objects.create(name="High Risk Countries", flatten=True)
+        countries.address_objects.set(
+            [models.AddressObject.objects.create(name=name, status=managed) for name in ("CN", "RU")]
+        )
+        band, _, _ = fixtures.create_policy_band()
+        cls.rule = models.PolicyRule.objects.create(
+            name="block countries", action="deny", rule_type="panos", band=band, position="header"
+        )
+        cls.rule.source_address_groups.set([countries])
+
+    def setUp(self):
+        """Grant view access to rules and addresses."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.view_policyrule",
+            "nautobot_firewall_models.view_addressobject",
+            "nautobot_firewall_models.view_addressobjectgroup",
+        )
+
+    def test_rest_rendered_addresses(self):
+        """The REST API lists the flattened group's members and leaves the group out."""
+        url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-detail", kwargs={"pk": self.rule.pk})
+        response = self.client.get(f"{url}?exclude_m2m=false", **self.header)
+
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        self.assertEqual([i["name"] for i in response.data["rendered_source_addresses"]], ["CN", "RU"])
+        self.assertEqual(response.data["rendered_source_address_groups"], [])
+
+    def test_graphql_rendered_addresses(self):
+        """GraphQL exposes the same rendered addresses."""
+        query = (
+            '{ policy_rules(name: "block countries") '
+            "{ rendered_source_addresses { name } rendered_source_address_groups { name } } }"
+        )
+        response = self.client.post(reverse("graphql-api"), {"query": query}, format="json", **self.header)
+
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        rule = response.data["data"]["policy_rules"][0]
+        self.assertEqual([i["name"] for i in rule["rendered_source_addresses"]], ["CN", "RU"])
+        self.assertEqual(rule["rendered_source_address_groups"], [])
