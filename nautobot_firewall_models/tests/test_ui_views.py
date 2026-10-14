@@ -647,13 +647,15 @@ class PolicyRuleTypeUIViewTest(TestCase):
         for field in ("band", "position", "source_zones", "source_users", "applications"):
             self.assertNotContains(response, f'name="{field}"')
 
-    def test_panos_form_hides_the_chain(self):
-        """The PAN-OS form has no chain."""
+    def test_panos_form_hides_the_chain_and_source_services(self):
+        """The PAN-OS form has no chain and no source services, which PAN-OS security rules do not support."""
         response = self.client.get(f"{self.url}?rule_type=panos")
 
         self.assertHttpStatus(response, 200)
         self.assertContains(response, 'name="band"')
         self.assertNotContains(response, 'name="chain"')
+        self.assertNotContains(response, 'name="source_services_and_groups"')
+        self.assertContains(response, 'name="destination_services_and_groups"')
 
     def test_create_nftables_rule(self):
         """Posting the nftables form creates an nftables rule."""
@@ -726,7 +728,7 @@ class ObjectOrGroupPickerUIViewTest(TestCase):
         for name, kind in (
             ("source_zones", "zones"),
             ("destination_addresses", "addresses"),
-            ("source_services", "services"),
+            ("destination_services", "services"),
             ("source_users", "users"),
             ("applications", "applications"),
         ):
@@ -820,6 +822,16 @@ class ObjectOrGroupPickerUIViewTest(TestCase):
         self.assertEqual(list(rule.source_address_groups.all()), [address_group])
         self.assertEqual(list(rule.destination_services.all()), [service])
         self.assertEqual(list(rule.destination_service_groups.all()), [service_group])
+
+    def test_nat_form_has_no_source_service_pickers(self):
+        """The NAT form has destination service pickers but no source service pickers."""
+        response = self.client.get(self.nat_url)
+
+        self.assertHttpStatus(response, 200)
+        for name in ("original_source_services", "translated_source_services"):
+            self.assertNotContains(response, f'name="{name}_and_groups"')
+        for name in ("original_destination_services", "translated_destination_services"):
+            self.assertContains(response, f'name="{name}_and_groups"')
 
     def test_nftables_form_has_no_zone_picker(self):
         """nftables rules have no zones, so the form has no zone picker but keeps the address picker."""

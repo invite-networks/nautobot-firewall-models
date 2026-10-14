@@ -16,9 +16,7 @@ It is recommended to use a descriptive name to best identify a NATPolicyRule, ot
 * Request ID (optional, string)
     * Meant to represent an upstream request (e.g. an service request from an ITSM solution).
 * Index (optional, int)
-    * Sets the index of the PolicyRule in the Policy.
-    * Example `20 permit icmp host 1.1.1.1 any` would have an index of `20`.
-    * Set as optional for now, will be set to required at a later date with default as the highest value + 10.
+    * Orders the rule in the NAT Policy. Rules without an index come after every indexed rule, and rules sharing an index, or without one, are ordered by name.
 * Log (boolean)
 
 ### Before translation
@@ -27,10 +25,10 @@ It is recommended to use a descriptive name to best identify a NATPolicyRule, ot
 * Original Source Address Group (M2M to AddressObjectGroup)
 * Original Destination Address (M2M to AddressObject)
 * Original Destination Address Group (M2M to AddressObjectGroup)
-* Original Source Service (M2M to ServiceObject)
-* Original Source Service Group (M2M to ServiceObjectGroup)
 * Original Destination Service (M2M to ServiceObject)
 * Original Destination Service Group (M2M to ServiceObjectGroup)
+
+NAT rules have no source service. PAN-OS NAT matches on the original destination service and translates the destination port only, so Original and Translated Source Services exist in the data model but are refused.
 
 ### After translation
 
@@ -38,7 +36,5 @@ It is recommended to use a descriptive name to best identify a NATPolicyRule, ot
 * Translated Source Address Group (M2M to AddressObjectGroup)
 * Translated Destination Address (M2M to AddressObject)
 * Translated Destination Address Group (M2M to AddressObjectGroup)
-* Translated Source Service (M2M to ServiceObject)
-* Translated Source Service Group (M2M to ServiceObjectGroup)
 * Translated Destination Service (M2M to ServiceObject)
 * Translated Destination Service Group (M2M to ServiceObjectGroup)

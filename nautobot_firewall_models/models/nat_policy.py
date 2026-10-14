@@ -205,6 +205,14 @@ class NATPolicyRule(PrimaryModel):
 
     natural_key_field_names = ["pk"]
 
+    # PAN-OS NAT matches on the original destination service and translates the destination port only, so a NAT rule
+    # has no source service on either side.
+    UNSUPPORTED_RELATIONS = (
+        "original_source_services",
+        "original_source_service_groups",
+        "translated_source_services",
+        "translated_source_service_groups",
+    )
     ADDRESS_RELATIONS = (
         "original_source_addresses",
         "original_source_address_groups",
@@ -219,7 +227,8 @@ class NATPolicyRule(PrimaryModel):
     class Meta:
         """Meta class."""
 
-        ordering = ["index"]
+        # Rules without an index sort last, and rules sharing an index are ordered by name so the order is stable.
+        ordering = [models.F("index").asc(nulls_last=True), "name"]
         verbose_name = "NAT Policy Rule"
         verbose_name_plural = "NAT Policy Rules"
 
@@ -260,11 +269,14 @@ class NATPolicyRule(PrimaryModel):
 
     @classmethod
     def validate_relations(cls, relations):
-        """Refuse host relative Address Objects, which only nftables Policy Rules can render.
+        """Refuse source services, and host relative Address Objects, which only nftables Policy Rules can render.
 
         `relations` maps a many-to-many field name to the objects being assigned, as on PolicyRule.validate_relations.
         """
         errors = {}
+        for field in cls.UNSUPPORTED_RELATIONS:
+            if relations.get(field):
+                errors[field] = "NAT rules have no source service."
         for field in cls.ADDRESS_RELATIONS:
             if names := host_relative_names(relations.get(field)):
                 errors[field] = f"Device and dynamic Address Objects only work on nftables rules: {', '.join(names)}."

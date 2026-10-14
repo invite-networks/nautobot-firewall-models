@@ -731,6 +731,17 @@ class RuleTypeAPITest(APITestCase):
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
         self.assertIn("destination_addresses", response.data)
 
+    def test_panos_rule_with_source_service_is_refused(self):
+        """Source services are refused on PAN-OS rules."""
+        service = models.ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
+        self.add_permissions("nautobot_firewall_models.view_serviceobject")
+        response = self._post(
+            rule_type="panos", band=str(self.band.pk), position="header", source_services=[str(service.pk)]
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("source_services", response.data)
+
     def test_patch_keeps_saved_relations_in_the_check(self):
         """A PATCH that leaves zones out still sees the saved rule type."""
         rule = models.PolicyRule.objects.create(name="ssh", action="allow", rule_type="nftables", chain="input")
@@ -817,6 +828,20 @@ class HostRelativeAndPolicyTypeAPITest(APITestCase):
 
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
         self.assertIn("original_source_addresses", response.data)
+
+    def test_nat_rule_refuses_source_service(self):
+        """Creating a NAT rule with an original source service is refused."""
+        service = models.ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
+        self.add_permissions("nautobot_firewall_models.view_serviceobject")
+        response = self.client.post(
+            self._url("natpolicyrule"),
+            {"name": "nat", "original_source_services": [str(service.pk)]},
+            format="json",
+            **self.header,
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("original_source_services", response.data)
 
     def test_group_used_by_panos_rule_refuses_host_relative_address(self):
         """Adding a dynamic Address Object to a group a PAN-OS rule uses is refused."""

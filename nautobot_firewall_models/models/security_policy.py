@@ -78,6 +78,11 @@ class PolicyRule(PrimaryModel):
         "applications",
         "application_groups",
     )
+    # Relations only an nftables rule can express; PAN-OS security rules match on destination service only.
+    NFTABLES_ONLY_RELATIONS = (
+        "source_services",
+        "source_service_groups",
+    )
     ADDRESS_RELATIONS = (
         "source_addresses",
         "source_address_groups",
@@ -324,6 +329,9 @@ class PolicyRule(PrimaryModel):
                 if relations.get(field):
                     errors[field] = "Only PAN-OS rules can use this."
         elif rule_type == "panos":
+            for field in cls.NFTABLES_ONLY_RELATIONS:
+                if relations.get(field):
+                    errors[field] = "Only nftables rules can use this."
             for field in cls.ADDRESS_RELATIONS:
                 if names := host_relative_names(relations.get(field)):
                     errors[field] = (

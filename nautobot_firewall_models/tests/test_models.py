@@ -306,9 +306,20 @@ class TestNATPolicyRuleModels(TestCase):
         keys = ["rule", "original_source_address_groups", "translated_destination_address_groups", "remark"]
         self.assertTrue(set(keys).issubset(rule_details.keys()))
 
+    def test_natpolicyrules_without_index_sort_last_by_name(self):
+        """NAT rules sort by index, rules without one come last, and ties are ordered by name."""
+        NATPolicyRule.objects.all().delete()
+        unindexed = NATPolicyRule.objects.create(name="a unindexed")
+        second = NATPolicyRule.objects.create(name="b", index=10)
+        first = NATPolicyRule.objects.create(name="a", index=10)
+        lowest = NATPolicyRule.objects.create(name="z", index=1)
+
+        self.assertEqual(list(NATPolicyRule.objects.all()), [lowest, first, second, unindexed])
+
     def test_natpolicyrule_to_json(self):
         """Test method to_json on NATPolicyRule model."""
-        obj = NATPolicyRule.objects.first()
+        # Fetched by name: the fixture rules have no index, so they sort by name.
+        obj = NATPolicyRule.objects.get(name="NAT Policy Rule 1.1")
         json_details = obj.to_json()
         self.assertEqual(json_details["display"], "NAT Policy Rule 1.1 - req1")
         self.assertTrue(
@@ -338,7 +349,8 @@ class TestNATPolicyModels(TestCase):
 
     def test_policy_to_json(self):
         """Test method to_json on Policy model."""
-        obj = NATPolicyRule.objects.first()
+        # Fetched by name: the fixture rules have no index, so they sort by name.
+        obj = NATPolicyRule.objects.get(name="NAT Policy Rule 1.1")
         json_details = obj.to_json()
         self.assertEqual(json_details["name"], "NAT Policy Rule 1.1")
         self.assertTrue(
@@ -633,6 +645,19 @@ class TestRuleTypes(TestCase):
             PolicyRule.validate_relations("nftables", {"source_zones": [self.zone]})
         self.assertIn("source_zones", ctx.exception.message_dict)
 
+    def test_panos_refuses_source_services(self):
+        """PAN-OS security rules match on destination service only."""
+        service = ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
+        group = ServiceObjectGroup.objects.create(name="ephemeral ports")
+        with self.assertRaises(ValidationError) as ctx:
+            PolicyRule.validate_relations("panos", {"source_services": [service], "source_service_groups": [group]})
+        self.assertEqual(set(ctx.exception.message_dict), {"source_services", "source_service_groups"})
+
+    def test_nftables_accepts_source_services(self):
+        """nftables rules may match on source service."""
+        service = ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
+        PolicyRule.validate_relations("nftables", {"source_services": [service]})
+
     def test_nftables_accepts_host_relative_addresses(self):
         """nftables rules may use Device and dynamic Address Objects."""
         PolicyRule.validate_relations("nftables", {"source_addresses": [self.subnet]})
@@ -686,6 +711,30 @@ class TestHostRelativeUsage(TestCase):
         with self.assertRaises(ValidationError), transaction.atomic():
             self.subnet.translated_destination_nat_policy_rules.add(self.nat)
 
+    def test_nat_rule_refuses_source_services(self):
+        """NAT rules have no source service, original or translated, from the rule side or the object side."""
+        service = ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
+        group = ServiceObjectGroup.objects.create(name="ephemeral ports")
+        with self.assertRaises(ValidationError) as ctx:
+            NATPolicyRule.validate_relations(
+                {"original_source_services": [service], "translated_source_service_groups": [group]}
+            )
+        self.assertEqual(
+            set(ctx.exception.message_dict), {"original_source_services", "translated_source_service_groups"}
+        )
+        with self.assertRaises(ValidationError), transaction.atomic():
+            self.nat.original_source_service_groups.add(group)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            service.translated_source_nat_policy_rules.add(self.nat)
+
+    def test_nat_rule_accepts_destination_services(self):
+        """NAT rules still match and translate on destination service."""
+        service = ServiceObject.objects.create(name="HTTPS", port="443", ip_protocol="TCP")
+        self.nat.original_destination_services.add(service)
+        self.nat.translated_destination_services.add(service)
+
+        self.assertEqual(list(self.nat.original_destination_services.all()), [service])
+
     def test_nat_rule_refuses_group_with_host_relative_address(self):
         """NAT rules refuse a group holding a host relative Address Object."""
         group = AddressObjectGroup.objects.create(name="dynamic group")
@@ -697,6 +746,12 @@ class TestHostRelativeUsage(TestCase):
         """Adding a host relative object straight to a PAN-OS rule is refused."""
         with self.assertRaises(ValidationError), transaction.atomic():
             self.panos.source_addresses.add(self.subnet)
+
+    def test_panos_rule_refuses_source_service_on_add(self):
+        """Adding a source service straight to a PAN-OS rule is refused."""
+        service = ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
+        with self.assertRaises(ValidationError), transaction.atomic():
+            self.panos.source_services.add(service)
 
     def test_nftables_rule_refuses_zone_on_add(self):
         """Adding a zone straight to an nftables rule is refused."""

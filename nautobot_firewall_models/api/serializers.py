@@ -213,7 +213,11 @@ class PolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         """Check the related objects against the rule type, using the saved values for fields a PATCH leaves out."""
         rule_type = self.instance.rule_type if self.instance else attrs.get("rule_type")
         relations = {}
-        for field in (*models.PolicyRule.PANOS_ONLY_RELATIONS, *models.PolicyRule.ADDRESS_RELATIONS):
+        for field in (
+            *models.PolicyRule.PANOS_ONLY_RELATIONS,
+            *models.PolicyRule.NFTABLES_ONLY_RELATIONS,
+            *models.PolicyRule.ADDRESS_RELATIONS,
+        ):
             if field in attrs:
                 relations[field] = attrs[field]
             elif self.instance:

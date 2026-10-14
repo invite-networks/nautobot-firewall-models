@@ -752,7 +752,8 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
             self.fields["chain"].required = True
             self.fields["action"].choices = [i for i in self.fields["action"].choices if i[0] != "remark"]
         else:
-            del self.fields["chain"]
+            for field in ("chain", *models.PolicyRule.NFTABLES_ONLY_RELATIONS):
+                del self.fields[field]
             self.fields["band"].required = True
             self.fields["position"].required = True
         self.combine_grouped_fields()
@@ -904,12 +905,6 @@ class NATPolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
     original_source_address_groups = DynamicModelMultipleChoiceField(
         queryset=models.AddressObjectGroup.objects.all(), label="Original Source Address Object Groups", required=False
     )
-    original_source_services = DynamicModelMultipleChoiceField(
-        queryset=models.ServiceObject.objects.all(), label="Original Source Service Objects", required=False
-    )
-    original_source_service_groups = DynamicModelMultipleChoiceField(
-        queryset=models.ServiceObjectGroup.objects.all(), label="Original Source Service Object Groups", required=False
-    )
 
     # Translated source data
     translated_source_addresses = DynamicModelMultipleChoiceField(
@@ -918,14 +913,6 @@ class NATPolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
     translated_source_address_groups = DynamicModelMultipleChoiceField(
         queryset=models.AddressObjectGroup.objects.all(),
         label="Translated Source Address Object Groups",
-        required=False,
-    )
-    translated_source_services = DynamicModelMultipleChoiceField(
-        queryset=models.ServiceObject.objects.all(), label="Translated Source Service Objects", required=False
-    )
-    translated_source_service_groups = DynamicModelMultipleChoiceField(
-        queryset=models.ServiceObjectGroup.objects.all(),
-        label="Translated Source Service Object Groups",
         required=False,
     )
 
@@ -978,12 +965,8 @@ class NATPolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
             "destination_zone_groups",
             "original_source_addresses",
             "original_source_address_groups",
-            "original_source_services",
-            "original_source_service_groups",
             "translated_source_addresses",
             "translated_source_address_groups",
-            "translated_source_services",
-            "translated_source_service_groups",
             "original_destination_addresses",
             "original_destination_address_groups",
             "original_destination_services",

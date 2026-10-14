@@ -10,6 +10,17 @@ This document describes all new features and changes in the release. The format 
 
 <!-- towncrier release notes start -->
 
+## [v4.2.1 (2026-10-14)](https://github.com/invite-networks/nautobot-firewall-models/releases/tag/v4.2.1)
+
+### Changed
+
+- Refused Source Services and Source Service Groups on PAN-OS Policy Rules, which match on destination service only. nftables rules still accept them, and the PAN-OS form no longer shows the picker.
+- Refused Original and Translated Source Services and their groups on NAT Policy Rules, and removed them from the NAT rule form and the expanded rule table. PAN-OS NAT matches on the original destination service and translates the destination port only.
+
+### Fixed
+
+- Ordered NAT Policy Rules with no index after indexed rules, and by name when rules share an index or have none, matching Policy Rules. NAT rules without an index previously came back in no defined order.
+
 ## [v4.2.0 (2026-10-14)](https://github.com/invite-networks/nautobot-firewall-models/releases/tag/v4.2.0)
 
 ### Breaking Changes

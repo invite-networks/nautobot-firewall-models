@@ -125,14 +125,18 @@ M2M_CHECKS = {
             field,
             lambda rule, field, objects: models.PolicyRule.validate_relations(rule.rule_type, {field: objects}),
         )
-        for field in (*models.PolicyRule.PANOS_ONLY_RELATIONS, *models.PolicyRule.ADDRESS_RELATIONS)
+        for field in (
+            *models.PolicyRule.PANOS_ONLY_RELATIONS,
+            *models.PolicyRule.NFTABLES_ONLY_RELATIONS,
+            *models.PolicyRule.ADDRESS_RELATIONS,
+        )
     },
     **{
         getattr(models.NATPolicyRule, field).through: (
             field,
             lambda rule, field, objects: models.NATPolicyRule.validate_relations({field: objects}),
         )
-        for field in models.NATPolicyRule.ADDRESS_RELATIONS
+        for field in (*models.NATPolicyRule.UNSUPPORTED_RELATIONS, *models.NATPolicyRule.ADDRESS_RELATIONS)
     },
     models.AddressObjectGroup.address_objects.through: (
         "address_objects",
