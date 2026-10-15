@@ -110,7 +110,7 @@ class ZoneFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     key_and_reverse_url_string = {
         "vrfs": "ipam:vrf_list",
         "devices": "dcim:device_list",
-        "interfaces": "dcim:interface_list",
+        "virtual_machines": "virtualization:virtualmachine_list",
     }
 
 
@@ -421,7 +421,7 @@ zone = ui.ObjectDetailContent(
         ZoneFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            fields=["name", "description", "vrfs", "devices", "interfaces", "status"],
+            fields=["name", "description", "vrfs", "devices", "virtual_machines", "status"],
         ),
     ),
 )

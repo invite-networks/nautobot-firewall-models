@@ -10,6 +10,7 @@ from nautobot.apps.filters import (
     StatusModelFilterSetMixin,
 )
 from nautobot.dcim.models import Device
+from nautobot.virtualization.models import VirtualMachine
 
 from nautobot_firewall_models import models
 
@@ -146,6 +147,11 @@ class ZoneFilterSet(BaseFilterSet, NautobotFilterSet):
         field_name="devices",
         queryset=Device.objects.all(),
         label="Devices (name or ID)",
+    )
+    virtual_machines = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="virtual_machines",
+        queryset=VirtualMachine.objects.all(),
+        label="Virtual Machines (name or ID)",
     )
 
     class Meta:

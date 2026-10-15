@@ -156,7 +156,7 @@ class ZoneTable(StatusTableMixin, BaseTable):
         """Meta attributes."""
 
         model = models.Zone
-        fields = ("pk", "name", "vrfs", "devices", "interfaces", "description", "status")
+        fields = ("pk", "name", "vrfs", "devices", "virtual_machines", "description", "status")
 
 
 class ZoneGroupTable(StatusTableMixin, BaseTable):

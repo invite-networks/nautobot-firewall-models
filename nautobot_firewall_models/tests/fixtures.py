@@ -8,6 +8,7 @@ from nautobot.extras.models.statuses import Status
 from nautobot.ipam.models import VRF, Namespace, Prefix
 from nautobot.ipam.models import IPAddress as IPAddr
 from nautobot.tenancy.models import Tenant, TenantGroup
+from nautobot.virtualization.models import Cluster, ClusterType, VirtualMachine
 
 from nautobot_firewall_models.models import *  # pylint: disable=unused-wildcard-import, wildcard-import
 
@@ -496,3 +497,11 @@ def create_linux_host(name="web01", address="10.0.0.10"):
     host.primary_ip4, _ = IPAddr.objects.get_or_create(address=f"{address}/24", namespace=namespace, status=status)
     host.save()
     return host
+
+
+def create_virtual_machine(name="vm01"):
+    """Creates a Virtual Machine in a test Cluster."""
+    status = Status.objects.get(name="Active")
+    cluster_type, _ = ClusterType.objects.get_or_create(name="VMware")
+    cluster, _ = Cluster.objects.get_or_create(name="Cluster 1", cluster_type=cluster_type)
+    return VirtualMachine.objects.get_or_create(name=name, cluster=cluster, status=status)[0]

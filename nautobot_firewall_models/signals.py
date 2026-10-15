@@ -3,9 +3,10 @@
 from django.core.exceptions import ValidationError
 from django.db.models.signals import m2m_changed, pre_delete
 from django.dispatch import receiver
-from nautobot.dcim.models import Device, Interface
+from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.ipam.models import VRF, IPAddress, Prefix
+from nautobot.virtualization.models import VirtualMachine
 
 from nautobot_firewall_models import models
 from nautobot_firewall_models.constants import PLUGIN_CFG
@@ -20,7 +21,7 @@ ON_DELETE = {
     Prefix: ["address_objects"],
     VRF: ["zones"],
     Device: ["zones", "address_objects"],
-    Interface: ["zones"],
+    VirtualMachine: ["zones"],
     models.FQDN: ["address_objects"],
     models.AddressObject: [
         "address_object_groups",
@@ -98,7 +99,7 @@ if PLUGIN_CFG["protect_on_delete"]:
     @receiver(pre_delete, sender=Prefix)
     @receiver(pre_delete, sender=VRF)
     @receiver(pre_delete, sender=Device)
-    @receiver(pre_delete, sender=Interface)
+    @receiver(pre_delete, sender=VirtualMachine)
     @receiver(pre_delete, sender=models.FQDN)
     @receiver(pre_delete, sender=models.AddressObject)
     @receiver(pre_delete, sender=models.AddressObjectGroup)

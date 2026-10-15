@@ -9,7 +9,7 @@ from nautobot.apps.forms import (
     TagFilterField,
     add_blank_choice,
 )
-from nautobot.dcim.models import Device, Interface
+from nautobot.dcim.models import Device
 from nautobot.extras.forms import (
     NautobotBulkEditForm,
     NautobotFilterForm,
@@ -19,6 +19,7 @@ from nautobot.extras.models import DynamicGroup, Tag
 from nautobot.ipam.models import VRF, IPAddress, Prefix
 from nautobot.tenancy.forms import TenancyFilterForm, TenancyForm
 from nautobot.tenancy.models import Tenant
+from nautobot.virtualization.models import VirtualMachine
 
 from nautobot_firewall_models import choices, fields, models
 
@@ -472,23 +473,28 @@ class ZoneFilterForm(NautobotFilterForm):
     name = forms.CharField(required=False, label="Name")
     vrfs = DynamicModelChoiceField(queryset=VRF.objects.all(), label="VRF")
     devices = DynamicModelChoiceField(queryset=Device.objects.all(), label="Device")
-    interfaces = DynamicModelChoiceField(queryset=Interface.objects.all(), label="Interface")
+    virtual_machines = DynamicModelChoiceField(queryset=VirtualMachine.objects.all(), label="Virtual Machine")
 
 
-class ZoneForm(NautobotModelForm):
-    """Zone creation/edit form."""
+class ZoneForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
+    """Zone creation/edit form, with one picker for the Devices and Virtual Machines the Zone is bound to."""
 
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
     devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
-    interfaces = DynamicModelMultipleChoiceField(
-        queryset=Interface.objects.all(), required=False, label="Interface", query_params={"device_id": "$devices"}
+    virtual_machines = DynamicModelMultipleChoiceField(
+        queryset=VirtualMachine.objects.all(), required=False, label="Virtual Machines"
     )
 
     class Meta:
         """Meta attributes."""
 
         model = models.Zone
-        fields = ["name", "description", "vrfs", "devices", "interfaces", "status", "tags"]
+        fields = ["name", "description", "vrfs", "devices", "virtual_machines", "status", "tags"]
+
+    def __init__(self, *args, **kwargs):
+        """Show one picker for Devices and Virtual Machines."""
+        super().__init__(*args, **kwargs)
+        self.combine_grouped_fields()
 
 
 class ZoneBulkEditForm(NautobotBulkEditForm):
@@ -498,12 +504,14 @@ class ZoneBulkEditForm(NautobotBulkEditForm):
     description = forms.CharField(required=False)
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
     devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
-    interfaces = DynamicModelMultipleChoiceField(queryset=Interface.objects.all(), required=False, label="Interface")
+    virtual_machines = DynamicModelMultipleChoiceField(
+        queryset=VirtualMachine.objects.all(), required=False, label="Virtual Machines"
+    )
 
     class Meta:
         """Meta attributes."""
 
-        nullable_fields = ["description", "vrfs", "devices", "interfaces"]
+        nullable_fields = ["description", "vrfs", "devices", "virtual_machines"]
 
 
 class ZoneGroupFilterForm(NautobotFilterForm):

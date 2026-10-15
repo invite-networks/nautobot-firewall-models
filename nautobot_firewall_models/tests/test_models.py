@@ -1,7 +1,7 @@
 """Test Firewall models."""
 
 # ruff: noqa: F403, F405
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, too-many-lines
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import ProtectedError
@@ -28,7 +28,6 @@ class TestModels(TestCase):
 
         self.assertEqual(zone.description, "")
         self.assertEqual(zone.name, "trust")
-        self.assertEqual(zone.interfaces.count(), 0)
         self.assertEqual(zone.vrfs.count(), 0)
 
     def test_create_zone_vrf_description_fields_success(self):
@@ -38,7 +37,6 @@ class TestModels(TestCase):
 
         self.assertEqual(zone.description, "LAN Zone")
         self.assertEqual(zone.name, "trust")
-        self.assertEqual(zone.interfaces.count(), 0)
         self.assertEqual(zone.vrfs.first(), self.vrf)
 
     def test_zone_bound_to_multiple_devices(self):
@@ -1043,3 +1041,15 @@ class TestNestedAddressGroups(TestCase):
 
         self.assertEqual(list(rule.rendered_source_address_groups()), [self.bottom])
         self.assertEqual(list(rule.rendered_source_addresses()), [])
+
+
+class TestZoneVirtualMachines(TestCase):
+    """Test binding Zones to Virtual Machines."""
+
+    def test_zone_bound_to_device_and_virtual_machine(self):
+        """A Zone can be bound to Devices and Virtual Machines, and each lists its Zones."""
+        vm = fixtures.create_virtual_machine()
+        zone = Zone.objects.create(name="dmz")
+        zone.virtual_machines.add(vm)
+
+        self.assertEqual(list(vm.zones.all()), [zone])

@@ -1,6 +1,6 @@
 """Unit tests for nautobot_firewall_models."""
 
-# pylint: disable=invalid-name, duplicate-code
+# pylint: disable=invalid-name, duplicate-code, too-many-lines
 from unittest import mock
 
 from django.urls import reverse
@@ -963,3 +963,44 @@ class NestedAddressGroupAPITest(APITestCase):
 
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
         self.assertIn("address_object_groups", response.data)
+
+
+class ZoneVirtualMachineAPITest(APITestCase):
+    """Test binding Zones to Virtual Machines over the REST API and the picker search."""
+
+    def setUp(self):
+        """Grant access to Zones, Devices and Virtual Machines."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_zone",
+            "nautobot_firewall_models.view_zone",
+            "dcim.view_device",
+            "virtualization.view_virtualmachine",
+        )
+        self.vm = fixtures.create_virtual_machine()
+
+    def test_create_zone_with_virtual_machine(self):
+        """A Zone can be created bound to a Virtual Machine, and filtered by it."""
+        url = reverse("plugins-api:nautobot_firewall_models-api:zone-list")
+        response = self.client.post(
+            url, {"name": "vm zone", "virtual_machines": [str(self.vm.pk)]}, format="json", **self.header
+        )
+
+        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
+        response = self.client.get(f"{url}?virtual_machines={self.vm.name}", **self.header)
+        self.assertEqual([i["name"] for i in response.data["results"]], ["vm zone"])
+
+    def test_picker_search_lists_devices_then_virtual_machines(self):
+        """The devices search lists Devices, then Virtual Machines, under their own headings."""
+        fixtures.create_sample_env()
+        url = reverse("plugins-api:nautobot_firewall_models-api:grouped-objects", kwargs={"kind": "devices"})
+        response = self.client.get(url, {"limit": 1000}, **self.header)
+
+        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
+        headings = [i["group"]["name"] for i in response.data["results"]]
+        self.assertEqual(headings[-1], "Virtual Machines")
+        self.assertEqual(set(headings), {"Devices", "Virtual Machines"})
+        self.assertIn(
+            {"id": f"group:{self.vm.pk}", "name": "vm01", "display": "vm01", "group": {"name": "Virtual Machines"}},
+            response.data["results"],
+        )

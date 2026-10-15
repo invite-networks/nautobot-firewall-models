@@ -2,9 +2,10 @@
 
 # ruff: noqa: F403, F405
 # pylint: disable=invalid-name
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code, too-many-lines
 from django.urls import reverse
 from nautobot.apps.testing import TestCase, ViewTestCases, post_data
+from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.ipam.models import Prefix
 from nautobot.users.models import ObjectPermission
@@ -979,3 +980,45 @@ class NestedAddressGroupUIViewTest(TestCase):
 
         self.assertHttpStatus(response, 200)
         self.assertContains(response, "A group can not contain itself")
+
+
+class ZoneDevicePickerUIViewTest(TestCase):
+    """Test the Zone form's single picker for Devices and Virtual Machines."""
+
+    def setUp(self):
+        """Grant access to Zones, Devices and Virtual Machines."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_zone",
+            "nautobot_firewall_models.view_zone",
+            "dcim.view_device",
+            "virtualization.view_virtualmachine",
+            "extras.view_status",
+        )
+        self.url = reverse("plugins:nautobot_firewall_models:zone_add")
+
+    def test_form_shows_one_picker_for_devices_and_virtual_machines(self):
+        """The Zone form has one searching picker in place of the separate Device field."""
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'name="devices_and_groups"')
+        self.assertContains(response, 'data-url="/api/plugins/firewall/grouped-objects/devices/"')
+        self.assertNotContains(response, 'name="devices"')
+        self.assertNotContains(response, 'name="virtual_machines"')
+
+    def test_picker_saves_devices_and_virtual_machines(self):
+        """The picker's selection is split into Devices and Virtual Machines."""
+        fixtures.create_sample_env()
+        device = Device.objects.first()
+        vm = fixtures.create_virtual_machine()
+        data = {
+            "name": "dmz",
+            "status": Status.objects.get(name="Active").pk,
+            "devices_and_groups": [f"object:{device.pk}", f"group:{vm.pk}"],
+        }
+        response = self.client.post(self.url, post_data(data))
+
+        self.assertHttpStatus(response, 302)
+        zone = Zone.objects.get(name="dmz")
+        self.assertEqual(list(zone.devices.all()), [device])
+        self.assertEqual(list(zone.virtual_machines.all()), [vm])

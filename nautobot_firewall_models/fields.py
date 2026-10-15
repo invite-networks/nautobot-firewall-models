@@ -60,6 +60,8 @@ class ObjectOrGroupFormMixin:
         "services": ("service_groups", "services"),
         "users": ("user_groups", "users"),
         "applications": ("application_groups", "applications"),
+        # Not a group, but a Zone binds to Devices and Virtual Machines the same way.
+        "devices": ("virtual_machines", "devices"),
     }
     PREFIXES = ("group:", "object:")
 
@@ -88,13 +90,14 @@ class ObjectOrGroupFormMixin:
             "plugins-api:nautobot_firewall_models-api:grouped-objects", kwargs={"kind": kind}
         )
         model = self.fields[objects_name].queryset.model
+        group_model = self.fields[groups_name].queryset.model
         # Only the selected options are rendered; the rest are searched as the user types. The choices are read when
         # the form renders, after Nautobot has restricted the querysets to what the user may view.
         field = GroupedObjectsField(
             choices=lambda: self._selected_choices(combined_name),
             required=False,
             label=objects_name.replace("_", " ").title(),
-            help_text=f"{model._meta.verbose_name_plural.title()} and their groups.",
+            help_text=f"{model._meta.verbose_name_plural.title()} and {group_model._meta.verbose_name_plural.title()}.",
             widget=widget,
         )
         selected = [f"group:{getattr(i, 'pk', i)}" for i in self.initial.get(groups_name) or []]

@@ -3,6 +3,10 @@
 from django.http import Http404
 from drf_spectacular.utils import extend_schema
 from nautobot.apps.api import ModelViewSet, NautobotModelViewSet
+from nautobot.dcim.filters import DeviceFilterSet
+from nautobot.dcim.models import Device
+from nautobot.virtualization.filters import VirtualMachineFilterSet
+from nautobot.virtualization.models import VirtualMachine
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -177,31 +181,39 @@ class NATPolicyDynamicGroupM2MViewSet(ModelViewSet):
 
 
 class GroupedObjectsView(APIView):
-    """Search objects and their groups together, for the combined pickers on the rule forms.
+    """Search two related models together, for the combined pickers on the rule, group and Zone forms.
 
-    Results are groups first, then objects, each with an `id` of `group:<pk>` or `object:<pk>` and a `group` heading
-    that the picker shows them under. Only what the user may view is returned.
+    Most kinds are objects and their groups, with groups listed first. Each result has an `id` of `group:<pk>` or
+    `object:<pk>` and a `group` heading that the picker shows it under. Only what the user may view is returned.
     """
 
     permission_classes = [IsAuthenticated]
-    # Kind, mapped to (group model, group filterset) and (object model, object filterset).
+    # Kind, mapped to the (value prefix, model, filterset) sources it searches, in the order they are listed.
     KINDS = {
-        "zones": ((models.ZoneGroup, filters.ZoneGroupFilterSet), (models.Zone, filters.ZoneFilterSet)),
+        "zones": (
+            ("group", models.ZoneGroup, filters.ZoneGroupFilterSet),
+            ("object", models.Zone, filters.ZoneFilterSet),
+        ),
         "addresses": (
-            (models.AddressObjectGroup, filters.AddressObjectGroupFilterSet),
-            (models.AddressObject, filters.AddressObjectFilterSet),
+            ("group", models.AddressObjectGroup, filters.AddressObjectGroupFilterSet),
+            ("object", models.AddressObject, filters.AddressObjectFilterSet),
         ),
         "services": (
-            (models.ServiceObjectGroup, filters.ServiceObjectGroupFilterSet),
-            (models.ServiceObject, filters.ServiceObjectFilterSet),
+            ("group", models.ServiceObjectGroup, filters.ServiceObjectGroupFilterSet),
+            ("object", models.ServiceObject, filters.ServiceObjectFilterSet),
         ),
         "users": (
-            (models.UserObjectGroup, filters.UserObjectGroupFilterSet),
-            (models.UserObject, filters.UserObjectFilterSet),
+            ("group", models.UserObjectGroup, filters.UserObjectGroupFilterSet),
+            ("object", models.UserObject, filters.UserObjectFilterSet),
         ),
         "applications": (
-            (models.ApplicationObjectGroup, filters.ApplicationObjectGroupFilterSet),
-            (models.ApplicationObject, filters.ApplicationObjectFilterSet),
+            ("group", models.ApplicationObjectGroup, filters.ApplicationObjectGroupFilterSet),
+            ("object", models.ApplicationObject, filters.ApplicationObjectFilterSet),
+        ),
+        # A Zone's Devices and Virtual Machines: the picker's "group" values are Virtual Machines.
+        "devices": (
+            ("object", Device, DeviceFilterSet),
+            ("group", VirtualMachine, VirtualMachineFilterSet),
         ),
     }
     MAX_LIMIT = 1000
@@ -235,7 +247,7 @@ class GroupedObjectsView(APIView):
         search = request.query_params.get("q")
 
         sources = []
-        for prefix, (model, filterset) in zip(("group", "object"), self.KINDS[kind]):
+        for prefix, model, filterset in self.KINDS[kind]:
             queryset = model.objects.restrict(request.user, "view")
             if search:
                 queryset = filterset({"q": search}, queryset).qs
