@@ -16,6 +16,7 @@ This document describes all new features and changes in the release. The format 
 
 ### Breaking Changes
 
+- Renamed the Policy Rule positions `header` and `closer` to `pre` (Pre Rules) and `post` (Post Rules). The migration renames existing rules.
 - Removed Interfaces from Zones: the `interfaces` field, its form picker and its column. A Zone is bound to Devices and Virtual Machines instead.
 - Removed the IP Range model, its UI, its REST API endpoint `/api/plugins/firewall/ip-range/` and the `ip_range` field on Address Objects. The migration stops if any IP Ranges exist.
 
@@ -27,6 +28,8 @@ This document describes all new features and changes in the release. The format 
 - Added `address_object_groups` to Address Object Groups for nested groups, to any depth. A group cannot contain itself, directly or through another group. Flattening opens nested groups that are also flattened and keeps the others as groups, and the host relative and Managed Locally checks look through every level. The group form picks Address Objects and nested groups in one searchable field.
 
 - Added `virtual_machines` to Zones, so a Zone can be bound to Virtual Machines as well as Devices. The Zone form picks both in one searchable field, Zones can be filtered by Virtual Machine, and with `protect_on_delete` enabled a Virtual Machine cannot be deleted while it is bound to a Zone.
+
+- Added the Final position for a band's closing rules. Final rules sort after every Pre and Post rule in the band whatever their index, ordered among themselves by index and then name, and must deny or drop.
 
 ### Fixed
 

@@ -317,18 +317,18 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         status = Status.objects.get(name="Active").id
         svc = ServiceObject.objects.first()
         PolicyRule.objects.create(
-            rule_type="panos", band=band, position="header", name="deleteableobj1", action="deny", index=1
+            rule_type="panos", band=band, position="pre", name="deleteableobj1", action="deny", index=1
         )
         PolicyRule.objects.create(
-            rule_type="panos", band=band, position="header", name="deleteableobj2", action="deny", index=1
+            rule_type="panos", band=band, position="pre", name="deleteableobj2", action="deny", index=1
         )
         PolicyRule.objects.create(
-            rule_type="panos", band=band, position="header", name="deleteableobj3", action="deny", index=1
+            rule_type="panos", band=band, position="pre", name="deleteableobj3", action="deny", index=1
         )
         cls.form_data = {
             # pylint: disable=R0801
             "band": band.id,
-            "position": "header",
+            "position": "pre",
             # The form takes objects and their groups through one combined picker per field.
             "source_users_and_groups": [f"object:{src_usr.id}"],
             "source_addresses_and_groups": [f"object:{src_addr.id}"],
@@ -341,9 +341,9 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
         }
         cls.csv_data = (
             "name,rule_type,action,band,position,index,status",
-            "csvobj1,panos,deny,Global Deny,header,1,Active",
-            "csvobj2,panos,deny,Global Deny,header,2,Active",
-            "csvobj3,panos,deny,Global Deny,closer,3,Active",
+            "csvobj1,panos,deny,Global Deny,pre,1,Active",
+            "csvobj2,panos,deny,Global Deny,pre,2,Active",
+            "csvobj3,panos,deny,Global Deny,post,3,Active",
         )
 
 
@@ -647,7 +647,7 @@ class PolicyRuleTypeUIViewTest(TestCase):
             "rule_type": "panos",
             "name": "not internal",
             "band": band.pk,
-            "position": "header",
+            "position": "pre",
             "action": "allow",
             "negate_source": True,
             "status": Status.objects.get(name="Active").pk,
@@ -725,7 +725,7 @@ class ObjectOrGroupPickerUIViewTest(TestCase):
                 "rule_type": "panos",
                 "name": "zoned",
                 "band": self.band.pk,
-                "position": "header",
+                "position": "pre",
                 "action": "allow",
                 "status": self.status.pk,
                 **data,
@@ -768,7 +768,7 @@ class ObjectOrGroupPickerUIViewTest(TestCase):
     def test_edit_form_selects_saved_zones_and_groups(self):
         """Editing a rule preselects its saved Zones and Zone Groups in the picker."""
         rule = PolicyRule.objects.create(
-            name="saved", action="allow", rule_type="panos", band=self.band, position="header"
+            name="saved", action="allow", rule_type="panos", band=self.band, position="pre"
         )
         rule.source_zones.set([self.zone])
         rule.source_zone_groups.set([self.group])

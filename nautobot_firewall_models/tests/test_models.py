@@ -350,7 +350,7 @@ class TestZoneGroupModels(TestCase):
     def test_policy_rule_expanded_zones_without_zones(self):
         """A rule with no zones or zone groups expands to nothing (implicit any)."""
         rule = PolicyRule.objects.create(
-            rule_type="panos", name="no zones", action="allow", band=self.band, position="header"
+            rule_type="panos", name="no zones", action="allow", band=self.band, position="pre"
         )
 
         self.assertEqual(list(rule.expanded_source_zones()), [])
@@ -359,7 +359,7 @@ class TestZoneGroupModels(TestCase):
     def test_policy_rule_expanded_zones(self):
         """Zones set directly and zones reached through groups are combined without duplicates."""
         rule = PolicyRule.objects.create(
-            rule_type="panos", name="zone groups", action="allow", band=self.band, position="header"
+            rule_type="panos", name="zone groups", action="allow", band=self.band, position="pre"
         )
         rule.source_zones.set([self.wan])
         rule.source_zone_groups.set([self.outside, self.inside])
@@ -371,7 +371,7 @@ class TestZoneGroupModels(TestCase):
     def test_policy_rule_expanded_zones_reflects_group_changes(self):
         """Expansion is evaluated on demand, so later group membership changes are picked up."""
         rule = PolicyRule.objects.create(
-            rule_type="panos", name="late change", action="allow", band=self.band, position="header"
+            rule_type="panos", name="late change", action="allow", band=self.band, position="pre"
         )
         rule.source_zone_groups.set([self.outside])
         self.assertEqual(list(rule.expanded_source_zones()), [self.wan])
@@ -391,7 +391,7 @@ class TestZoneGroupModels(TestCase):
     def test_rule_details_include_zone_groups(self):
         """rule_details exposes both the zones and the zone groups on each side."""
         rule = PolicyRule.objects.create(
-            rule_type="panos", name="details", action="allow", band=self.band, position="header"
+            rule_type="panos", name="details", action="allow", band=self.band, position="pre"
         )
         rule.source_zone_groups.set([self.inside])
         details = rule.rule_details()
@@ -403,7 +403,7 @@ class TestZoneGroupModels(TestCase):
     def test_zone_group_delete_protected_when_used_by_rule(self):
         """A ZoneGroup assigned to a rule can not be deleted while protect_on_delete is enabled."""
         rule = PolicyRule.objects.create(
-            rule_type="panos", name="protected", action="allow", band=self.band, position="header"
+            rule_type="panos", name="protected", action="allow", band=self.band, position="pre"
         )
         rule.destination_zone_groups.set([self.outside])
 
@@ -441,45 +441,45 @@ class TestPolicyBandModels(TestCase):
 
     def test_rules_ordered_by_band_before_rule_index(self):
         """A rule in an earlier band comes first even with a higher rule index."""
-        late = self._rule("late", self.medium_trust, "header", index=1)
-        early = self._rule("early", self.global_deny, "header", index=99)
+        late = self._rule("late", self.medium_trust, "pre", index=1)
+        early = self._rule("early", self.global_deny, "pre", index=99)
 
         self.assertEqual(list(PolicyRule.objects.all()), [early, late])
 
-    def test_header_rules_come_before_closer_rules(self):
-        """Within a band, every Header rule comes before every Closer rule regardless of index."""
-        closer = self._rule("closer", self.universal, "closer", index=1)
-        header = self._rule("header", self.universal, "header", index=50)
+    def test_pre_rules_come_before_post_rules(self):
+        """Within a band, every Pre rule comes before every Post rule regardless of index."""
+        post = self._rule("post", self.universal, "post", index=1)
+        pre = self._rule("pre", self.universal, "pre", index=50)
 
-        self.assertEqual(list(PolicyRule.objects.all()), [header, closer])
+        self.assertEqual(list(PolicyRule.objects.all()), [pre, post])
 
     def test_rules_without_index_come_last_within_position(self):
         """Rules with no index sort after indexed rules in the same band and position."""
-        unindexed = self._rule("a unindexed", self.universal, "header")
-        indexed = self._rule("z indexed", self.universal, "header", index=10)
+        unindexed = self._rule("a unindexed", self.universal, "pre")
+        indexed = self._rule("z indexed", self.universal, "pre", index=10)
 
         self.assertEqual(list(PolicyRule.objects.all()), [indexed, unindexed])
 
     def test_rules_sharing_an_index_are_ordered_by_name(self):
         """Rules may share an index, and break the tie by name so the order is stable."""
-        second = self._rule("Block B", self.global_deny, "header", index=10)
-        first = self._rule("Block A", self.global_deny, "header", index=10)
+        second = self._rule("Block B", self.global_deny, "pre", index=10)
+        first = self._rule("Block A", self.global_deny, "pre", index=10)
 
         self.assertEqual(list(PolicyRule.objects.all()), [first, second])
 
     def test_band_with_rules_can_not_be_deleted(self):
         """A PolicyBand that still has rules is protected from deletion."""
-        self._rule("protected", self.universal, "header")
+        self._rule("protected", self.universal, "pre")
 
         with self.assertRaises(ProtectedError):
             self.universal.delete()
 
     def test_rule_details_include_band_and_position(self):
         """rule_details exposes the rule's band and position."""
-        details = self._rule("details", self.universal, "closer").rule_details()
+        details = self._rule("details", self.universal, "post").rule_details()
 
         self.assertEqual(details["band"], self.universal)
-        self.assertEqual(details["position"], "closer")
+        self.assertEqual(details["position"], "post")
 
 
 class TestHostRelativeAddressObjects(TestCase):
@@ -569,7 +569,7 @@ class TestRuleTypes(TestCase):
     def test_nftables_refuses_band_position_and_remark(self):
         """Bands, positions and remarks are PAN-OS concepts."""
         rule = PolicyRule(
-            name="mixed", action="remark", rule_type="nftables", chain="input", band=self.band, position="header"
+            name="mixed", action="remark", rule_type="nftables", chain="input", band=self.band, position="pre"
         )
         with self.assertRaises(ValidationError) as ctx:
             rule.full_clean()
@@ -582,7 +582,7 @@ class TestRuleTypes(TestCase):
             action="allow",
             rule_type="panos",
             band=self.band,
-            position="header",
+            position="pre",
             negate_source=True,
             negate_destination=True,
         )
@@ -607,7 +607,7 @@ class TestRuleTypes(TestCase):
     def test_panos_refuses_a_chain(self):
         """Chains are an nftables concept."""
         rule = PolicyRule(
-            rule_type="panos", name="chain", action="allow", band=self.band, position="header", chain="input"
+            rule_type="panos", name="chain", action="allow", band=self.band, position="pre", chain="input"
         )
         with self.assertRaises(ValidationError) as ctx:
             rule.full_clean()
@@ -624,7 +624,7 @@ class TestRuleTypes(TestCase):
         rule.rule_type = "panos"
         rule.chain = ""
         rule.band = self.band
-        rule.position = "header"
+        rule.position = "pre"
         with self.assertRaises(ValidationError) as ctx:
             rule.full_clean()
         self.assertIn("rule_type", ctx.exception.message_dict)
@@ -672,7 +672,7 @@ class TestRuleTypes(TestCase):
         second = PolicyRule.objects.create(name="b", action="allow", rule_type="nftables", chain="input", index=2)
         first = PolicyRule.objects.create(name="a", action="allow", rule_type="nftables", chain="input", index=1)
         panos = PolicyRule.objects.create(
-            rule_type="panos", name="pan", action="allow", band=self.band, position="closer", index=99
+            rule_type="panos", name="pan", action="allow", band=self.band, position="post", index=99
         )
 
         self.assertEqual(list(PolicyRule.objects.all()), [panos, first, second, output])
@@ -684,9 +684,7 @@ class TestHostRelativeUsage(TestCase):
     def setUp(self) -> None:
         """Create a PAN-OS rule, an nftables rule, a NAT rule, a static object and a dynamic object."""
         band, _, _ = fixtures.create_policy_band()
-        self.panos = PolicyRule.objects.create(
-            name="pan", action="allow", rule_type="panos", band=band, position="header"
-        )
+        self.panos = PolicyRule.objects.create(name="pan", action="allow", rule_type="panos", band=band, position="pre")
         self.nftables = PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
         self.nat = NATPolicyRule.objects.create(name="nat")
         self.host = fixtures.create_linux_host()
@@ -798,7 +796,7 @@ class TestPolicyRuleTypes(TestCase):
         """Create a rule of each type and a Policy of each type."""
         band, _, _ = fixtures.create_policy_band()
         self.panos_rule = PolicyRule.objects.create(
-            name="pan", action="allow", rule_type="panos", band=band, position="header"
+            name="pan", action="allow", rule_type="panos", band=band, position="pre"
         )
         self.nft_rule = PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
         self.panos_policy = Policy.objects.create(name="firewall", rule_type="panos")
@@ -895,7 +893,7 @@ class TestManagedLocally(TestCase):
     def test_managed_locally_objects_work_on_panos_rules(self):
         """PAN-OS rules can reference a Managed Locally object by name."""
         band, _, _ = fixtures.create_policy_band()
-        rule = PolicyRule.objects.create(name="block", action="deny", rule_type="panos", band=band, position="header")
+        rule = PolicyRule.objects.create(name="block", action="deny", rule_type="panos", band=band, position="pre")
         obj = AddressObject.objects.create(name="Palo Alto Networks - High risk IP addresses", status=self.managed)
         rule.source_addresses.add(obj)
 
@@ -917,7 +915,7 @@ class TestFlattenedAddressGroups(TestCase):
         self.servers.address_objects.set([self.office])
         band, _, _ = fixtures.create_policy_band()
         self.rule = PolicyRule.objects.create(
-            name="block countries", action="deny", rule_type="panos", band=band, position="header"
+            name="block countries", action="deny", rule_type="panos", band=band, position="pre"
         )
 
     def test_flatten_is_off_by_default(self):
@@ -969,9 +967,7 @@ class TestNestedAddressGroups(TestCase):
         self.subnet = AddressObject.objects.create(name="host subnet", dynamic="subnet")
         self.office = AddressObject.objects.create(name="office", fqdn=FQDN.objects.create(name="office.example.com"))
         band, _, _ = fixtures.create_policy_band()
-        self.panos = PolicyRule.objects.create(
-            name="pan", action="allow", rule_type="panos", band=band, position="header"
-        )
+        self.panos = PolicyRule.objects.create(name="pan", action="allow", rule_type="panos", band=band, position="pre")
 
     def test_group_can_not_contain_itself(self):
         """A group can not hold itself, directly or through nested groups, from either side."""
@@ -1070,3 +1066,52 @@ class TestManagedLocallyServiceObjects(TestCase):
 
         self.assertEqual(service.ip_protocol, "")
         self.assertEqual(str(service), "service-https")
+
+
+class TestFinalPosition(TestCase):
+    """Test the Final position: the band's closing deny or drop rules, always last in the band."""
+
+    def setUp(self) -> None:
+        """Create the bands."""
+        self.global_deny, self.universal, _ = fixtures.create_policy_band()
+
+    def _rule(self, name, position, action="allow", index=None, band=None):
+        return PolicyRule.objects.create(
+            rule_type="panos", name=name, action=action, band=band or self.universal, position=position, index=index
+        )
+
+    def test_final_rule_is_last_in_its_band_whatever_its_index(self):
+        """A Final rule sorts after every Pre and Post rule in its band, even with the lowest index."""
+        final = self._rule("final", "final", action="deny", index=1)
+        post = self._rule("post", "post", index=99)
+        pre = self._rule("pre", "pre", index=50)
+        earlier_band = self._rule("earlier band", "post", band=self.global_deny, index=99)
+
+        self.assertEqual(list(PolicyRule.objects.all()), [earlier_band, pre, post, final])
+
+    def test_final_rule_must_deny_or_drop(self):
+        """A Final rule closes the band, so it can not allow."""
+        rule = PolicyRule(rule_type="panos", name="final", action="allow", band=self.universal, position="final")
+        with self.assertRaises(ValidationError) as ctx:
+            rule.full_clean()
+        self.assertIn("action", ctx.exception.message_dict)
+        for action in ("deny", "drop"):
+            rule.action = action
+            rule.full_clean()
+
+    def test_several_final_rules_are_ordered_by_index_then_name(self):
+        """A band may have several Final rules, ordered by index, then name, with unindexed ones last."""
+        unindexed = self._rule("a unindexed", "final", action="deny")
+        second = self._rule("b drop", "final", action="drop", index=10)
+        first = self._rule("a deny", "final", action="deny", index=10)
+        lowest = self._rule("z deny", "final", action="deny", index=1)
+        post = self._rule("post", "post", index=99)
+
+        self.assertEqual(list(PolicyRule.objects.all()), [post, lowest, first, second, unindexed])
+
+    def test_position_labels(self):
+        """The positions read as Pre Rules, Post Rules and Final."""
+        self.assertEqual(
+            [PolicyRule(position=value).get_position_display() for value in ("pre", "post", "final")],
+            ["Pre Rules", "Post Rules", "Final"],
+        )

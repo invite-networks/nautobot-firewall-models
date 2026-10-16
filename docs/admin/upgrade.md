@@ -43,6 +43,8 @@ Integrations must now send `rule_type` when creating Policy Rules and Policies. 
 
 Version 4.3 removes IP Ranges. The migration stops if any IP Ranges exist. Change every Address Object that uses one to a Prefix, IP Address or FQDN, delete the IP Ranges, then upgrade. Integrations that call `/api/plugins/firewall/ip-range/` or read `ip_range` on Address Objects must be updated.
 
+Policy Rule positions are renamed: `header` becomes `pre` (Pre Rules) and `closer` becomes `post` (Post Rules). The migration renames existing rules, so update any integration that sends or reads the old values. A new `final` position holds a band's closing deny or drop rules, which always sort last in the band.
+
 The migration also creates the Managed Locally status and adds the negate and flatten fields with defaults of false, so no other step is needed.
 
 ## Upgrade Guide

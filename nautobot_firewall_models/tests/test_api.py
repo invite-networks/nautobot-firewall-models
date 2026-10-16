@@ -291,13 +291,13 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
         dest_addr = models.AddressObject.objects.last()
         svc = models.ServiceObject.objects.first()
         models.PolicyRule.objects.create(
-            rule_type="panos", band=band, position="header", name="deleteableobj1", action="deny", index=1
+            rule_type="panos", band=band, position="pre", name="deleteableobj1", action="deny", index=1
         )
         models.PolicyRule.objects.create(
-            rule_type="panos", band=band, position="header", name="deleteableobj2", action="deny", index=1
+            rule_type="panos", band=band, position="pre", name="deleteableobj2", action="deny", index=1
         )
         models.PolicyRule.objects.create(
-            rule_type="panos", band=band, position="header", name="deleteableobj3", action="deny", index=1
+            rule_type="panos", band=band, position="pre", name="deleteableobj3", action="deny", index=1
         )
         cls.create_data = [
             {
@@ -311,7 +311,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "name": "test rule 1",
                 "rule_type": "panos",
                 "band": band.id,
-                "position": "header",
+                "position": "pre",
             },
             {
                 "source_users": [src_usr.id],
@@ -323,7 +323,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "name": "test rule 2",
                 "rule_type": "panos",
                 "band": band.id,
-                "position": "closer",
+                "position": "post",
             },
         ]
 
@@ -459,7 +459,7 @@ class ExpandedZonesAPITest(APITestCase):
         wan = models.Zone.objects.get(name="WAN")
         band, _, _ = fixtures.create_policy_band()
         cls.policy_rule = models.PolicyRule.objects.create(
-            rule_type="panos", name="expanded", action="allow", band=band, position="header"
+            rule_type="panos", name="expanded", action="allow", band=band, position="pre"
         )
         cls.policy_rule.source_zones.set([wan])
         cls.policy_rule.source_zone_groups.set([outside])
@@ -622,7 +622,7 @@ class RuleTypeAPITest(APITestCase):
     def test_panos_rule_with_dynamic_address_is_refused(self):
         """Host relative addresses are refused on PAN-OS rules."""
         response = self._post(
-            rule_type="panos", band=str(self.band.pk), position="header", destination_addresses=[str(self.subnet.pk)]
+            rule_type="panos", band=str(self.band.pk), position="pre", destination_addresses=[str(self.subnet.pk)]
         )
 
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
@@ -633,7 +633,7 @@ class RuleTypeAPITest(APITestCase):
         service = models.ServiceObject.objects.create(name="ephemeral", port="1024-65535", ip_protocol="TCP")
         self.add_permissions("nautobot_firewall_models.view_serviceobject")
         response = self._post(
-            rule_type="panos", band=str(self.band.pk), position="header", source_services=[str(service.pk)]
+            rule_type="panos", band=str(self.band.pk), position="pre", source_services=[str(service.pk)]
         )
 
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
@@ -655,7 +655,7 @@ class RuleTypeAPITest(APITestCase):
 
         response = self.client.patch(
             url,
-            {"rule_type": "panos", "chain": "", "band": str(self.band.pk), "position": "header"},
+            {"rule_type": "panos", "chain": "", "band": str(self.band.pk), "position": "pre"},
             format="json",
             **self.header,
         )
@@ -671,7 +671,7 @@ class HostRelativeAndPolicyTypeAPITest(APITestCase):
         """Create a PAN-OS rule using a group, an nftables rule and a dynamic Address Object."""
         band, _, _ = fixtures.create_policy_band()
         cls.panos_rule = models.PolicyRule.objects.create(
-            name="pan", action="allow", rule_type="panos", band=band, position="header"
+            name="pan", action="allow", rule_type="panos", band=band, position="pre"
         )
         cls.nft_rule = models.PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
         cls.group = models.AddressObjectGroup.objects.create(name="panos group")
@@ -888,7 +888,7 @@ class RenderedAddressesAPITest(APITestCase):
         )
         band, _, _ = fixtures.create_policy_band()
         cls.rule = models.PolicyRule.objects.create(
-            name="block countries", action="deny", rule_type="panos", band=band, position="header"
+            name="block countries", action="deny", rule_type="panos", band=band, position="pre"
         )
         cls.rule.source_address_groups.set([countries])
 
@@ -1004,3 +1004,34 @@ class ZoneVirtualMachineAPITest(APITestCase):
             {"id": f"group:{self.vm.pk}", "name": "vm01", "display": "vm01", "group": {"name": "Virtual Machines"}},
             response.data["results"],
         )
+
+
+class FinalPositionAPITest(APITestCase):
+    """Test the Final position over the REST API."""
+
+    def setUp(self):
+        """Grant access to Policy Rules and bands."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_policyrule",
+            "nautobot_firewall_models.view_policyrule",
+            "nautobot_firewall_models.view_policyband",
+        )
+        self.band, _, _ = fixtures.create_policy_band()
+        self.url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-list")
+
+    def _post(self, **data):
+        body = {"rule_type": "panos", "band": str(self.band.pk), "position": "final", "action": "deny", **data}
+        return self.client.post(self.url, body, format="json", **self.header)
+
+    def test_band_can_have_several_final_rules(self):
+        """The API accepts more than one Final rule in a band."""
+        self.assertHttpStatus(self._post(name="final"), drf_status.HTTP_201_CREATED)
+        self.assertHttpStatus(self._post(name="second", action="drop"), drf_status.HTTP_201_CREATED)
+
+    def test_final_rule_that_allows_is_refused(self):
+        """The API refuses a Final rule that allows."""
+        response = self._post(name="final", action="allow")
+
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("action", response.data)

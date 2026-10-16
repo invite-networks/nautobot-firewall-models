@@ -234,7 +234,10 @@ class PolicyRule(PrimaryModel):
         choices=choices.POSITION_CHOICES,
         max_length=CHARFIELD_MAX_LENGTH,
         blank=True,
-        help_text="PAN-OS only. Header rules come before the band's local rules on the firewall, Closer rules after.",
+        help_text=(
+            "PAN-OS only. Pre Rules come before the band's local rules on the firewall and Post Rules after. "
+            "Final rules, which deny or drop, are always last in the band."
+        ),
     )
     chain = models.CharField(
         choices=choices.CHAIN_CHOICES,
@@ -274,11 +277,11 @@ class PolicyRule(PrimaryModel):
     class Meta:
         """Meta class."""
 
-        # Band, then Header before Closer, then chain, then index, then name so rules sharing an index keep a stable
-        # order. nftables rules have no band and sort after PAN-OS rules.
+        # Band, then Pre Rules, Post Rules and Final rules, then chain, then index, then name so rules sharing an
+        # index keep a stable order. nftables rules have no band and sort after PAN-OS rules.
         ordering = [
             models.F("band__index").asc(nulls_last=True),
-            models.Case(models.When(position="header", then=0), default=1),
+            models.Case(models.When(position="pre", then=0), models.When(position="post", then=1), default=2),
             "chain",
             models.F("index").asc(nulls_last=True),
             "name",
@@ -327,6 +330,8 @@ class PolicyRule(PrimaryModel):
         errors.update({field: msg for field, msg in refused.items() if self.serializable_value(field)})
         if self.rule_type == "nftables" and self.action == "remark":
             errors["action"] = "nftables rules cannot be remarks."
+        if self.position == "final" and self.action not in choices.FINAL_ACTIONS:
+            errors["action"] = "A Final rule closes the band, so it must deny or drop."
         if self.present_in_database:
             saved_type = PolicyRule.objects.filter(pk=self.pk).values_list("rule_type", flat=True).first()
             if saved_type and saved_type != self.rule_type:

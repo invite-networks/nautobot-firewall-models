@@ -204,7 +204,7 @@ class PolicyRuleTestCase(FilterTestCases.FilterTestCase):
             name="Unassigned",
             action="allow",
             band=models.PolicyBand.objects.get(name="Universal"),
-            position="header",
+            position="pre",
         )
         for group in DynamicGroup.objects.all():
             group.update_cached_members()
@@ -212,9 +212,9 @@ class PolicyRuleTestCase(FilterTestCases.FilterTestCase):
 
     def test_position(self):
         """Filter rules by position."""
-        params = {"position": ["closer"]}
+        params = {"position": ["post"]}
         self.assertQuerysetEqual(
-            self.filterset(params, self.queryset).qs, self.queryset.filter(position="closer"), ordered=False
+            self.filterset(params, self.queryset).qs, self.queryset.filter(position="post"), ordered=False
         )
 
     def test_device_through_direct_assignment(self):

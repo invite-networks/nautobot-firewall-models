@@ -107,7 +107,7 @@ A rule can reference Zones directly, Zone Groups, or both. The `expanded_source_
 
 Policy Rules also return `rendered_source_addresses`, `rendered_source_address_groups`, `rendered_destination_addresses` and `rendered_destination_address_groups` over REST and GraphQL. They are the rule's addresses as deployment tooling should write them: every Address Object Group with Flatten set is replaced by its Address Objects, and other groups are kept. Address Objects and groups with the Managed Locally status are defined on the firewall, so tooling references them by name and never creates them.
 
-Policy Rules are returned in firewall order: by Policy Band index, then Header before Closer, then rule index, then name. Filter with `device` to get the merged, de-duplicated rule list for one Device across every Policy assigned to it directly or through a Dynamic Group. For example, `/api/plugins/firewall/policy-rule/?device=DFW-WAN00`, or `policy_rules(device: "DFW-WAN00")` in GraphQL.
+Policy Rules are returned in firewall order: by Policy Band index, then Pre Rules, Post Rules and Final rules, then rule index, then name. Filter with `device` to get the merged, de-duplicated rule list for one Device across every Policy assigned to it directly or through a Dynamic Group. For example, `/api/plugins/firewall/policy-rule/?device=DFW-WAN00`, or `policy_rules(device: "DFW-WAN00")` in GraphQL.
 
 #### Response
 

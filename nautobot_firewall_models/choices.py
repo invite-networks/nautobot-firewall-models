@@ -6,7 +6,10 @@ IP_PROTOCOL_CHOICES = tuple((i, i) for i in PROTO_NAME_TO_NUM.keys())  # pylint:
 
 ACTION_CHOICES = (("allow", "allow"), ("deny", "deny"), ("drop", "drop"), ("remark", "remark"))
 
-POSITION_CHOICES = (("header", "Header"), ("closer", "Closer"))
+POSITION_CHOICES = (("pre", "Pre Rules"), ("post", "Post Rules"), ("final", "Final"))
+
+# Actions a Final rule may take: it is the band's closing deny.
+FINAL_ACTIONS = ("deny", "drop")
 
 RULE_TYPE_CHOICES = (("panos", "PAN-OS"), ("nftables", "nftables"))
 
