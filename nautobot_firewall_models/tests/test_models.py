@@ -6,10 +6,10 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import ProtectedError
 from django.test import TestCase
-from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.ipam.models import VRF
 
+from nautobot_firewall_models import filters
 from nautobot_firewall_models.models import *  # pylint: disable=unused-wildcard-import, wildcard-import
 
 from . import fixtures
@@ -38,17 +38,6 @@ class TestModels(TestCase):
         self.assertEqual(zone.description, "LAN Zone")
         self.assertEqual(zone.name, "trust")
         self.assertEqual(zone.vrfs.first(), self.vrf)
-
-    def test_zone_bound_to_multiple_devices(self):
-        """A Zone can be bound to several Devices and each Device lists its Zones."""
-        wan, lan = fixtures.bind_zone_devices()
-        dfw = Device.objects.get(name="DFW02-WAN00")
-
-        self.assertEqual(
-            sorted(wan.devices.values_list("name", flat=True)),
-            ["DFW02-WAN00", "HOU02-WAN00"],
-        )
-        self.assertEqual(sorted(dfw.zones.values_list("name", flat=True)), sorted([wan.name, lan.name]))
 
     def test_address_object_too_many_objects(self):
         """Tests to make sure only one address can be on an address object."""
@@ -1053,18 +1042,6 @@ class TestNestedAddressGroups(TestCase):
         self.assertEqual(list(rule.rendered_source_addresses()), [])
 
 
-class TestZoneVirtualMachines(TestCase):
-    """Test binding Zones to Virtual Machines."""
-
-    def test_zone_bound_to_device_and_virtual_machine(self):
-        """A Zone can be bound to Devices and Virtual Machines, and each lists its Zones."""
-        vm = fixtures.create_virtual_machine()
-        zone = Zone.objects.create(name="dmz", zone_group=fixtures.default_zone_group())
-        zone.virtual_machines.add(vm)
-
-        self.assertEqual(list(vm.zones.all()), [zone])
-
-
 class TestManagedLocallyServiceObjects(TestCase):
     """Test that only Managed Locally Service Objects may leave out the IP protocol."""
 
@@ -1089,10 +1066,9 @@ class TestFinalPosition(TestCase):
         """Create the bands."""
         self.global_deny, self.universal, _ = fixtures.create_policy_band()
 
-    def _rule(self, name, position, action="allow", index=None, band=None):
-        return PolicyRule.objects.create(
-            rule_type="panos", name=name, action=action, band=band or self.universal, position=position, index=index
-        )
+    def _rule(self, name, position, **fields):
+        fields = {"action": "allow", "band": self.universal, **fields}
+        return PolicyRule.objects.create(rule_type="panos", name=name, position=position, **fields)
 
     def test_final_rule_is_last_in_its_band_whatever_its_index(self):
         """A Final rule sorts after every Pre and Post rule in its band, even with the lowest index."""
@@ -1210,3 +1186,40 @@ class TestPanosRuleType(TestCase):
             rule.destination_zones.add(self.wan)
             self.assertEqual(list(rule.destination_zones.all()), [self.wan])
             rule.delete()
+
+
+class TestTrustBand(TestCase):
+    """Test the Trust Band report: a Trust Band without a Final rule is flagged, never blocked."""
+
+    def setUp(self) -> None:
+        """Create a Trust Band and an ordinary band."""
+        self.low_trust = PolicyBand.objects.create(name="Low Trust", index=40, trust_band=True)
+        self.universal = PolicyBand.objects.create(name="Universal", index=20)
+
+    def _rule(self, band, position, action="allow"):
+        return PolicyRule.objects.create(
+            name=f"{band} {position}", action=action, rule_type="panos", band=band, position=position
+        )
+
+    def test_trust_band_is_off_by_default(self):
+        """Bands are not Trust Bands unless marked."""
+        self.assertFalse(self.universal.trust_band)
+        self.assertFalse(self.universal.missing_final_rule)
+
+    def test_trust_band_without_final_rule_is_reported_not_blocked(self):
+        """A Trust Band saves without a Final rule and reports it missing until one is added."""
+        self.low_trust.full_clean()
+        self._rule(self.low_trust, "pre")
+        self.assertTrue(self.low_trust.missing_final_rule)
+
+        self._rule(self.low_trust, "final", action="deny")
+        self.assertFalse(self.low_trust.missing_final_rule)
+
+    def test_filter_lists_trust_bands_missing_a_final_rule(self):
+        """The missing_final_rule filter returns only Trust Bands without a Final rule."""
+        covered = PolicyBand.objects.create(name="Medium Trust", index=30, trust_band=True)
+        self._rule(covered, "final", action="drop")
+        bands = PolicyBand.objects.all()
+
+        self.assertEqual(list(filters.PolicyBandFilterSet({"missing_final_rule": True}, bands).qs), [self.low_trust])
+        self.assertNotIn(self.low_trust, filters.PolicyBandFilterSet({"missing_final_rule": False}, bands).qs)

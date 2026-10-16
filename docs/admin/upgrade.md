@@ -53,6 +53,17 @@ A new `final` position holds a band's closing deny or drop rules, which always s
 
 The migration also creates the Managed Locally status and adds the negate and flatten fields with defaults of false, so no other step is needed.
 
+## Upgrade 4.3 to 4.4
+
+Version 4.4 assigns Policies, NAT Policies and Zones to the new Firewalls, HA Groups and Firewall Groups instead of Devices, Dynamic Groups and Virtual Machines. The upgrade does not convert the old assignments, and stops with a list of them if any exist. To upgrade with existing assignments:
+
+1. Note each Policy and NAT Policy's Devices and Dynamic Groups, and each Zone's Devices and Virtual Machines, then remove them.
+2. Upgrade and run `nautobot-server post-upgrade`.
+3. Create a Firewall for each Device or Virtual Machine under Security > Appliances, and any HA Groups and Firewall Groups.
+4. Assign the Policies and NAT Policies, and bind the Zones, again.
+
+Integrations must use `assigned_firewalls`, `assigned_ha_groups` and `assigned_firewall_groups` on Policies and NAT Policies, `firewalls`, `ha_groups` and `firewall_groups` on Zones, and `?firewall=` in place of `?device=` on Policy Rules.
+
 ## Upgrade Guide
 
 When a new release comes out it may be necessary to run a migration of the database to account for any changes in the data models used by this app. Execute the command `nautobot-server post-upgrade` within the runtime environment of your Nautobot installation after updating the `nautobot-firewall-models` package via `pip`.

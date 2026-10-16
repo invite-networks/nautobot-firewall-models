@@ -36,28 +36,19 @@ The simplest approach to creating policies is to work upwards, starting with the
     * Groups are commonly used to aggregate objects of the same type in firewall policies.
 4. Create Policy Rules.
 5. Create Policy and assign indexes to rules.
-6. Add Device and/or DynamicGroup objects to a Policy.
+6. Create Firewalls for the Devices or Virtual Machines, and optionally HA Groups and Firewall Groups.
+7. Assign the Policy to Firewalls, HA Groups or Firewall Groups.
 
 ## Custom Many-To-Many Models
 
 This plugin uses [custom models to model many-to-many](https://docs.djangoproject.com/en/3.2/howto/custom-model-fields/) relationships (also known as through models). Some of these models implement the logic for deleting objects in child-parent relationships, as discussed earlier. Other models add attributes enriching relationships defined between objects.
 
-`PolicyRuleM2M`, `PolicyDeviceM2M`, `PolicyDynamicGroupM2M` are used for setting additional attributes and the remainder are solely defined for the disabling deleting from the bottom up.
+The remaining through models are defined solely to disable deleting from the bottom up.
 
 ## Available Models
 
 {%
     include-markdown "./models/policy.md"
-    heading-offset=2
-%}
-
-{%
-    include-markdown "./models/policydevicem2m.md"
-    heading-offset=2
-%}
-
-{%
-    include-markdown "./models/policydynamicgroupm2m.md"
     heading-offset=2
 %}
 
@@ -122,6 +113,21 @@ This plugin uses [custom models to model many-to-many](https://docs.djangoprojec
 %}
 
 {%
+    include-markdown "./models/firewall.md"
+    heading-offset=2
+%}
+
+{%
+    include-markdown "./models/hagroup.md"
+    heading-offset=2
+%}
+
+{%
+    include-markdown "./models/firewallgroup.md"
+    heading-offset=2
+%}
+
+{%
     include-markdown "./models/natpolicy.md"
     heading-offset=2
 %}
@@ -131,12 +137,3 @@ This plugin uses [custom models to model many-to-many](https://docs.djangoprojec
     heading-offset=2
 %}
 
-{%
-    include-markdown "./models/natpolicydevicem2m.md"
-    heading-offset=2
-%}
-
-{%
-    include-markdown "./models/natpolicydynamicgroupm2m.md"
-    heading-offset=2
-%}

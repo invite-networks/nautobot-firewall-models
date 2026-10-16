@@ -45,10 +45,14 @@ class GroupedObjectsField(forms.MultipleChoiceField):
 
 
 class ObjectOrGroupFormMixin:
-    """Show one picker per rule field that searches objects and their groups together, e.g. Zones and Zone Groups.
+    """Show one picker that searches several related models together, e.g. Zones and Zone Groups.
 
     The model keeps separate fields such as `source_zones` and `source_zone_groups`. Those stay on the form, so Nautobot
-    still limits them to what the user may view, but they are hidden and filled from one `<field>_and_groups` picker.
+    still limits them to what the user may view, but they are hidden and filled from one combined picker. Each value
+    the picker submits is `<prefix>:<pk>`, and the prefix says which hidden field it belongs to.
+
+    Object and group pairs are found by GROUPED_SUFFIXES and get a `<field>_and_groups` picker. A form can declare
+    other pickers in `combined_pickers`.
     """
 
     # Suffix of an object field, mapped to the suffix of its group field and the grouped objects API kind the picker
@@ -60,49 +64,64 @@ class ObjectOrGroupFormMixin:
         "services": ("service_groups", "services"),
         "users": ("user_groups", "users"),
         "applications": ("application_groups", "applications"),
-        # Not a group, but a Zone binds to Devices and Virtual Machines the same way.
-        "devices": ("virtual_machines", "devices"),
+        "firewalls": ("ha_groups", "firewalls"),
     }
-    PREFIXES = ("group:", "object:")
+    # Picker name, mapped to (grouped objects API kind, label, ((value prefix, field name), ...)).
+    combined_pickers = {}
 
     def combine_grouped_fields(self):
-        """Replace each object and group field pair with one combined picker in the object field's position."""
-        self.grouped_pairs = {}
-        for name in self.fields:
-            for suffix, (group_suffix, kind) in self.GROUPED_SUFFIXES.items():
-                group_name = name.removesuffix(suffix) + group_suffix
-                if name.endswith(suffix) and group_name in self.fields:
-                    self.grouped_pairs[f"{name}_and_groups"] = (name, group_name, kind)
+        """Replace each set of related fields with one combined picker, placed where the first of them was."""
+        self.grouped_pairs = self._find_pickers()
+        order = list(self.fields)
+        placed = {
+            min(order.index(name) for _prefix, name in sources): combined_name
+            for combined_name, (_kind, _label, sources) in self.grouped_pairs.items()
+        }
         fields = {}
-        for name, field in self.fields.items():
-            if f"{name}_and_groups" in self.grouped_pairs:
-                fields[f"{name}_and_groups"] = self._combined_field(f"{name}_and_groups")
+        for position, (name, field) in enumerate(self.fields.items()):
+            if position in placed:
+                fields[placed[position]] = self._combined_field(placed[position])
             fields[name] = field
-        for objects_name, groups_name, _kind in self.grouped_pairs.values():
-            for name in (objects_name, groups_name):
+        for _kind, _label, sources in self.grouped_pairs.values():
+            for _prefix, name in sources:
                 fields[name].widget = ReadOnlyHiddenInput()
         self.fields = fields
 
+    def _find_pickers(self):
+        """Return the pickers this form shows: its declared ones, then each object and group field pair left over."""
+        pickers = {}
+        used = set()
+        for combined_name, (kind, label, sources) in self.combined_pickers.items():
+            if all(name in self.fields for _prefix, name in sources):
+                pickers[combined_name] = (kind, label, sources)
+                used.update(name for _prefix, name in sources)
+        for name in list(self.fields):
+            for suffix, (group_suffix, kind) in self.GROUPED_SUFFIXES.items():
+                group_name = name.removesuffix(suffix) + group_suffix
+                if name.endswith(suffix) and group_name in self.fields and not {name, group_name} & used:
+                    label = name.replace("_", " ").title()
+                    pickers[f"{name}_and_groups"] = (kind, label, (("object", name), ("group", group_name)))
+        return pickers
+
     def _combined_field(self, combined_name):
-        objects_name, groups_name, kind = self.grouped_pairs[combined_name]
+        kind, label, sources = self.grouped_pairs[combined_name]
         widget = APISelectMultiple()
         widget.attrs["data-url"] = reverse(
             "plugins-api:nautobot_firewall_models-api:grouped-objects", kwargs={"kind": kind}
         )
-        model = self.fields[objects_name].queryset.model
-        group_model = self.fields[groups_name].queryset.model
+        names = [self.fields[name].queryset.model._meta.verbose_name_plural.title() for _prefix, name in sources]
         # Only the selected options are rendered; the rest are searched as the user types. The choices are read when
         # the form renders, after Nautobot has restricted the querysets to what the user may view.
         field = GroupedObjectsField(
             choices=lambda: self._selected_choices(combined_name),
             required=False,
-            label=objects_name.replace("_", " ").title(),
-            help_text=f"{model._meta.verbose_name_plural.title()} and {group_model._meta.verbose_name_plural.title()}.",
+            label=label,
+            help_text=f"{', '.join(names[:-1])} and {names[-1]}.",
             widget=widget,
         )
-        selected = [f"group:{getattr(i, 'pk', i)}" for i in self.initial.get(groups_name) or []]
-        selected += [f"object:{getattr(i, 'pk', i)}" for i in self.initial.get(objects_name) or []]
-        self.initial[combined_name] = selected
+        self.initial[combined_name] = [
+            f"{prefix}:{getattr(i, 'pk', i)}" for prefix, name in sources for i in self.initial.get(name) or []
+        ]
         return field
 
     def _selected_values(self, combined_name):
@@ -113,36 +132,33 @@ class ObjectOrGroupFormMixin:
         return self.initial.get(combined_name) or []
 
     def _split_values(self, combined_name, values):
-        """Return the selected objects and groups, and whether every value was one the user may select."""
-        objects_name, groups_name, _kind = self.grouped_pairs[combined_name]
+        """Return the selected objects for each hidden field, and whether every value was one the user may select."""
+        _kind, _label, sources = self.grouped_pairs[combined_name]
         selected = {}
-        valid = True
-        for prefix, name in (("object:", objects_name), ("group:", groups_name)):
+        valid = all(value.startswith(tuple(f"{prefix}:" for prefix, _name in sources)) for value in values)
+        for prefix, name in sources:
             pks = set()
             for value in values:
-                if value.startswith(prefix):
+                if value.startswith(f"{prefix}:"):
                     try:
-                        pks.add(uuid.UUID(value.removeprefix(prefix)))
+                        pks.add(uuid.UUID(value.removeprefix(f"{prefix}:")))
                     except ValueError:
                         valid = False
             selected[name] = self.fields[name].queryset.filter(pk__in=pks)
             valid = valid and selected[name].count() == len(pks)
-        valid = valid and all(value.startswith(self.PREFIXES) for value in values)
         return selected, valid
 
     def _selected_choices(self, combined_name):
         selected, _valid = self._split_values(combined_name, self._selected_values(combined_name))
-        objects_name, groups_name, _kind = self.grouped_pairs[combined_name]
-        return [(f"group:{i.pk}", str(i)) for i in selected[groups_name]] + [
-            (f"object:{i.pk}", str(i)) for i in selected[objects_name]
-        ]
+        _kind, _label, sources = self.grouped_pairs[combined_name]
+        return [(f"{prefix}:{i.pk}", str(i)) for prefix, name in sources for i in selected[name]]
 
     def add_error(self, field, error):
-        """Show errors raised for a hidden object or group field on the combined picker that sets it."""
+        """Show errors raised for a hidden field on the combined picker that sets it."""
         combined = {
             name: combined_name
-            for combined_name, (objects_name, groups_name, _kind) in getattr(self, "grouped_pairs", {}).items()
-            for name in (objects_name, groups_name)
+            for combined_name, (_kind, _label, sources) in getattr(self, "grouped_pairs", {}).items()
+            for _prefix, name in sources
         }
         if field is None and hasattr(error, "error_dict"):
             errors = {}
@@ -154,7 +170,7 @@ class ObjectOrGroupFormMixin:
         super().add_error(field, error)
 
     def clean(self):
-        """Split each combined picker back into its object and group fields."""
+        """Split each combined picker back into its hidden fields."""
         super().clean()
         for combined_name in self.grouped_pairs:
             values = self.cleaned_data.get(combined_name)

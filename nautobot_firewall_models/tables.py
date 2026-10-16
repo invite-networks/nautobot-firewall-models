@@ -157,7 +157,17 @@ class ZoneTable(StatusTableMixin, BaseTable):
         """Meta attributes."""
 
         model = models.Zone
-        fields = ("pk", "name", "zone_group", "vrfs", "devices", "virtual_machines", "description", "status")
+        fields = (
+            "pk",
+            "name",
+            "zone_group",
+            "vrfs",
+            "firewalls",
+            "ha_groups",
+            "firewall_groups",
+            "description",
+            "status",
+        )
 
 
 class ZoneGroupTable(StatusTableMixin, BaseTable):
@@ -181,13 +191,18 @@ class PolicyBandTable(BaseTable):
     pk = ToggleColumn()
     name = tables.Column(linkify=True)
     policy_rule_count = tables.Column(verbose_name="Policy Rules")
+    final_rule = tables.TemplateColumn(
+        template_name="nautobot_firewall_models/inc/policy_band_final_rule_column.html",
+        verbose_name="Final Rule",
+        orderable=False,
+    )
     actions = ButtonsColumn(models.PolicyBand, buttons=("edit", "delete"))
 
     class Meta(BaseTable.Meta):
         """Meta attributes."""
 
         model = models.PolicyBand
-        fields = ("pk", "index", "name", "description", "policy_rule_count", "actions")
+        fields = ("pk", "index", "name", "trust_band", "final_rule", "description", "policy_rule_count", "actions")
 
 
 # TODO: refactor
@@ -280,8 +295,9 @@ class PolicyTable(StatusTableMixin, BaseTable):
     pk = ToggleColumn()
     name = tables.Column(linkify=True)
     actions = ButtonsColumn(models.Policy, buttons=("edit", "delete"))
-    assigned_devices = tables.ManyToManyColumn(linkify_item=True)
-    assigned_dynamic_groups = tables.ManyToManyColumn(linkify_item=True)
+    assigned_firewalls = tables.ManyToManyColumn(linkify_item=True, verbose_name="Firewalls")
+    assigned_ha_groups = tables.ManyToManyColumn(linkify_item=True, verbose_name="HA Groups")
+    assigned_firewall_groups = tables.ManyToManyColumn(linkify_item=True, verbose_name="Firewall Groups")
 
     class Meta(BaseTable.Meta):
         """Meta attributes."""
@@ -293,8 +309,9 @@ class PolicyTable(StatusTableMixin, BaseTable):
             "rule_type",
             "description",
             "policy_rules",
-            "assigned_devices",
-            "assigned_dynamic_groups",
+            "assigned_firewalls",
+            "assigned_ha_groups",
+            "assigned_firewall_groups",
             "status",
         )
 
@@ -376,8 +393,9 @@ class NATPolicyTable(StatusTableMixin, BaseTable):
     name = tables.Column(linkify=True)
     nat_policy_rules = tables.ManyToManyColumn(verbose_name="NAT policy rules", linkify_item=True)
     actions = ButtonsColumn(models.NATPolicy, buttons=("edit", "delete"))
-    assigned_devices = tables.ManyToManyColumn(linkify_item=True)
-    assigned_dynamic_groups = tables.ManyToManyColumn(linkify_item=True)
+    assigned_firewalls = tables.ManyToManyColumn(linkify_item=True, verbose_name="Firewalls")
+    assigned_ha_groups = tables.ManyToManyColumn(linkify_item=True, verbose_name="HA Groups")
+    assigned_firewall_groups = tables.ManyToManyColumn(linkify_item=True, verbose_name="Firewall Groups")
 
     class Meta(BaseTable.Meta):
         """Meta attributes."""
@@ -388,7 +406,58 @@ class NATPolicyTable(StatusTableMixin, BaseTable):
             "name",
             "description",
             "nat_policy_rules",
-            "assigned_devices",
-            "assigned_dynamic_groups",
+            "assigned_firewalls",
+            "assigned_ha_groups",
+            "assigned_firewall_groups",
             "status",
         )
+
+
+class FirewallTable(StatusTableMixin, BaseTable):
+    """Table for list view."""
+
+    pk = ToggleColumn()
+    name = tables.Column(linkify=True)
+    device = tables.Column(linkify=True)
+    virtual_machine = tables.Column(linkify=True)
+    ha_group = tables.Column(linkify=True)
+    firewall_groups = tables.ManyToManyColumn(linkify_item=True)
+    actions = ButtonsColumn(models.Firewall, buttons=("edit", "delete"))
+
+    class Meta(BaseTable.Meta):
+        """Meta attributes."""
+
+        model = models.Firewall
+        fields = ("pk", "name", "device", "virtual_machine", "ha_group", "firewall_groups", "description", "status")
+
+
+class HAGroupTable(StatusTableMixin, BaseTable):
+    """Table for list view."""
+
+    pk = ToggleColumn()
+    name = tables.Column(linkify=True)
+    management_address = tables.Column(linkify=True)
+    firewalls = tables.ManyToManyColumn(linkify_item=True)
+    actions = ButtonsColumn(models.HAGroup, buttons=("edit", "delete"))
+
+    class Meta(BaseTable.Meta):
+        """Meta attributes."""
+
+        model = models.HAGroup
+        fields = ("pk", "name", "management_address", "firewalls", "description", "status")
+
+
+class FirewallGroupTable(StatusTableMixin, BaseTable):
+    """Table for list view."""
+
+    pk = ToggleColumn()
+    name = tables.Column(linkify=True)
+    firewalls = tables.ManyToManyColumn(linkify_item=True)
+    ha_groups = tables.ManyToManyColumn(linkify_item=True, verbose_name="HA Groups")
+    actions = ButtonsColumn(models.FirewallGroup, buttons=("edit", "delete"))
+
+    class Meta(BaseTable.Meta):
+        """Meta attributes."""
+
+        model = models.FirewallGroup
+        fields = ("pk", "name", "firewalls", "ha_groups", "description", "status")

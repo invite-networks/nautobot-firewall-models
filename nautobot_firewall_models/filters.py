@@ -15,6 +15,19 @@ from nautobot.virtualization.models import VirtualMachine
 from nautobot_firewall_models import models
 
 
+def filter_by_firewall(queryset, firewalls, prefix):
+    """Return the objects in `queryset` assigned to any of `firewalls`, directly, by HA Group or by Firewall Group.
+
+    `prefix` is the path from the queryset's model to the policy holding the assignments, e.g. "policies__".
+    """
+    if not firewalls:
+        return queryset
+    assigned = Q()
+    for firewall in firewalls:
+        assigned |= firewall.assignment_filter(prefix)
+    return queryset.filter(pk__in=queryset.model.objects.filter(assigned).values("pk"))
+
+
 class BaseFilterSet(StatusModelFilterSetMixin, django_filters.filterset.FilterSet):
     """A base class for adding the search method to models which only expose the `name` and `description` fields."""
 
@@ -143,15 +156,14 @@ class ZoneFilterSet(BaseFilterSet, NautobotFilterSet):
         queryset=models.ZoneGroup.objects.all(),
         label="Zone Group (name or ID)",
     )
-    devices = NaturalKeyOrPKMultipleChoiceFilter(
-        field_name="devices",
-        queryset=Device.objects.all(),
-        label="Devices (name or ID)",
+    firewalls = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="firewalls", queryset=models.Firewall.objects.all(), label="Firewalls (name or ID)"
     )
-    virtual_machines = NaturalKeyOrPKMultipleChoiceFilter(
-        field_name="virtual_machines",
-        queryset=VirtualMachine.objects.all(),
-        label="Virtual Machines (name or ID)",
+    ha_groups = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="ha_groups", queryset=models.HAGroup.objects.all(), label="HA Groups (name or ID)"
+    )
+    firewall_groups = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="firewall_groups", queryset=models.FirewallGroup.objects.all(), label="Firewall Groups (name or ID)"
     )
 
     class Meta:
@@ -186,6 +198,15 @@ class PolicyBandFilterSet(NautobotFilterSet):
             "description": "icontains",
         }
     )
+    missing_final_rule = django_filters.BooleanFilter(
+        method="filter_missing_final_rule", label="Trust Bands without a Final rule"
+    )
+
+    def filter_missing_final_rule(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Return the Trust Bands without a Final rule, or every other band when value is false."""
+        bands_with_final = models.PolicyRule.objects.filter(position="final").values("band")
+        missing = Q(trust_band=True) & ~Q(pk__in=bands_with_final)
+        return queryset.filter(missing) if value else queryset.exclude(missing)
 
     class Meta:
         """Meta attributes for filter."""
@@ -209,21 +230,15 @@ class PolicyRuleFilterSet(BaseFilterSet, NautobotFilterSet):
         queryset=models.PolicyBand.objects.all(),
         label="Policy Bands (name or ID)",
     )
-    device = NaturalKeyOrPKMultipleChoiceFilter(
-        queryset=Device.objects.all(),
-        method="filter_device",
-        label="Devices (name or ID), through Policies assigned directly or by Dynamic Group",
+    firewall = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.Firewall.objects.all(),
+        method="filter_firewall",
+        label="Firewalls (name or ID), through Policies assigned to them, their HA Group or a Firewall Group",
     )
 
-    def filter_device(self, queryset, name, value):  # pylint: disable=unused-argument
-        """Return the rules of every Policy assigned to the Devices, directly or through a Dynamic Group."""
-        if not value:
-            return queryset
-        assigned = Q()
-        for device in value:
-            assigned |= Q(policies__assigned_devices=device)
-            assigned |= Q(policies__assigned_dynamic_groups__in=device.dynamic_groups)
-        return queryset.filter(pk__in=models.PolicyRule.objects.filter(assigned).values("pk"))
+    def filter_firewall(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Return the rules of every Policy assigned to the Firewalls, their HA Group or a Firewall Group."""
+        return filter_by_firewall(queryset, value, "policies__")
 
     class Meta:
         """Meta attributes for filter."""
@@ -242,6 +257,15 @@ class NATPolicyRuleFilterSet(BaseFilterSet, NautobotFilterSet):
             "request_id": "icontains",
         }
     )
+    firewall = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.Firewall.objects.all(),
+        method="filter_firewall",
+        label="Firewalls (name or ID), through NAT Policies assigned to them, their HA Group or a Firewall Group",
+    )
+
+    def filter_firewall(self, queryset, name, value):  # pylint: disable=unused-argument
+        """Return the rules of every NAT Policy assigned to the Firewalls, their HA Group or a Firewall Group."""
+        return filter_by_firewall(queryset, value, "nat_policies__")
 
     class Meta:
         """Meta attributes for filter."""
@@ -270,46 +294,51 @@ class NATPolicyFilterSet(BaseFilterSet, NautobotFilterSet):
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 
-###########################
-# Through Models
-###########################
+class FirewallFilterSet(BaseFilterSet, NautobotFilterSet):
+    """Filter for Firewall."""
 
-
-class PolicyDeviceM2MFilterSet(NautobotFilterSet):
-    """Filter for PolicyDeviceM2M."""
+    device = NaturalKeyOrPKMultipleChoiceFilter(queryset=Device.objects.all(), label="Device (name or ID)")
+    virtual_machine = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=VirtualMachine.objects.all(), label="Virtual Machine (name or ID)"
+    )
+    ha_group = NaturalKeyOrPKMultipleChoiceFilter(queryset=models.HAGroup.objects.all(), label="HA Group (name or ID)")
+    firewall_groups = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.FirewallGroup.objects.all(), label="Firewall Groups (name or ID)"
+    )
 
     class Meta:
         """Meta attributes for filter."""
 
-        model = models.PolicyDeviceM2M
+        model = models.Firewall
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 
-class PolicyDynamicGroupM2MFilterSet(NautobotFilterSet):
-    """Filter for PolicyDynamicGroupM2M."""
+class HAGroupFilterSet(BaseFilterSet, NautobotFilterSet):
+    """Filter for HAGroup."""
+
+    firewalls = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.Firewall.objects.all(), label="Firewalls (name or ID)"
+    )
 
     class Meta:
         """Meta attributes for filter."""
 
-        model = models.PolicyDynamicGroupM2M
+        model = models.HAGroup
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
 
 
-class NATPolicyDeviceM2MFilterSet(NautobotFilterSet):
-    """Filter for NATPolicyDeviceM2M."""
+class FirewallGroupFilterSet(BaseFilterSet, NautobotFilterSet):
+    """Filter for FirewallGroup."""
+
+    firewalls = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.Firewall.objects.all(), label="Firewalls (name or ID)"
+    )
+    ha_groups = NaturalKeyOrPKMultipleChoiceFilter(
+        queryset=models.HAGroup.objects.all(), label="HA Groups (name or ID)"
+    )
 
     class Meta:
         """Meta attributes for filter."""
 
-        model = models.NATPolicyDeviceM2M
-        fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]
-
-
-class NATPolicyDynamicGroupM2MFilterSet(NautobotFilterSet):
-    """Filter for NATPolicyDynamicGroupM2M."""
-
-    class Meta:
-        """Meta attributes for filter."""
-
-        model = models.NATPolicyDynamicGroupM2M
+        model = models.FirewallGroup
         fields = [i.name for i in model._meta.get_fields() if not isinstance(i, GenericRelation)]

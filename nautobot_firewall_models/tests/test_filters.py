@@ -3,8 +3,7 @@
 # pylint: disable=invalid-name
 
 from nautobot.apps.testing import FilterTestCases
-from nautobot.dcim.models import Device
-from nautobot.extras.models import DynamicGroup, Status
+from nautobot.extras.models import Status
 from nautobot.ipam.models import IPAddress, Namespace, Prefix
 
 from nautobot_firewall_models import filters, models
@@ -145,15 +144,15 @@ class ZoneTestCase(FilterTestCases.FilterTestCase):
     generic_filter_tests = (
         ("zone_group", "zone_group__id"),
         ("zone_group", "zone_group__name"),
-        ("devices", "devices__id"),
-        ("devices", "devices__name"),
+        ("firewalls", "firewalls__id"),
+        ("firewalls", "firewalls__name"),
     )
 
     @classmethod
     def setUpTestData(cls):
         """Set up test data."""
         fixtures.create_zone_group()
-        fixtures.bind_zone_devices()
+        fixtures.bind_zone_firewalls()
         # A zone in a third group, so each group filter matches a strict subset of zones.
         models.Zone.objects.create(
             name="Guest", status=Status.objects.get(name="Active"), zone_group=fixtures.default_zone_group()
@@ -208,8 +207,6 @@ class PolicyRuleTestCase(FilterTestCases.FilterTestCase):
             band=models.PolicyBand.objects.get(name="Universal"),
             position="pre",
         )
-        for group in DynamicGroup.objects.all():
-            group.update_cached_members()
         cls.assigned = models.PolicyRule.objects.exclude(name="Unassigned")
 
     def test_position(self):
@@ -219,20 +216,33 @@ class PolicyRuleTestCase(FilterTestCases.FilterTestCase):
             self.filterset(params, self.queryset).qs, self.queryset.filter(position="post"), ordered=False
         )
 
-    def test_device_through_direct_assignment(self):
-        """A Device sees the rules of Policies assigned to it directly."""
-        params = {"device": ["HOU02-WAN00"]}
+    def test_firewall_through_direct_assignment(self):
+        """A Firewall sees the rules of Policies assigned to it directly."""
+        params = {"firewall": ["HOU02-FW00"]}
         self.assertEqual([rule.name for rule in self.filterset(params, self.queryset).qs], ["Policy Rule 1"])
 
-    def test_device_through_dynamic_group(self):
-        """A Device sees the rules of Policies assigned to a Dynamic Group it belongs to, in firewall order."""
-        params = {"device": ["DFW02-WAN01"]}
+    def test_firewall_through_firewall_group(self):
+        """A Firewall sees the rules of Policies assigned to a Firewall Group it belongs to, in firewall order."""
+        params = {"firewall": ["DFW02-FW01"]}
         self.assertEqual(list(self.filterset(params, self.queryset).qs), list(self.assigned))
 
-    def test_device_merges_policies_without_duplicates(self):
-        """Rules shared by several Policies on one Device appear once, in band order."""
-        device = Device.objects.get(name="DFW02-WAN00")
-        rules = list(self.filterset({"device": [device.pk]}, self.queryset).qs)
+    def test_firewall_through_ha_group(self):
+        """A Firewall sees the rules of Policies assigned to its HA Group, or to a Firewall Group holding it."""
+        group = fixtures.create_ha_group()
+        policy = models.Policy.objects.get(name="Policy 2")
+        policy.assigned_ha_groups.add(group)
+        firewall = group.firewalls.first()
+
+        expected = list(models.PolicyRule.objects.filter(policies=policy))
+        self.assertEqual(list(self.filterset({"firewall": [firewall.pk]}, self.queryset).qs), expected)
+        policy.assigned_ha_groups.clear()
+        models.FirewallGroup.objects.get(name="North Texas").ha_groups.add(group)
+        self.assertEqual(list(self.filterset({"firewall": [firewall.pk]}, self.queryset).qs), list(self.assigned))
+
+    def test_firewall_merges_policies_without_duplicates(self):
+        """Rules shared by several Policies on one Firewall appear once, in band order."""
+        firewall = models.Firewall.objects.get(name="DFW02-FW00")
+        rules = list(self.filterset({"firewall": [firewall.pk]}, self.queryset).qs)
 
         self.assertEqual(len(rules), len(set(rules)))
         self.assertEqual(rules, list(self.assigned))

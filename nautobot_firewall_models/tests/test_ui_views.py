@@ -5,7 +5,6 @@
 # pylint: disable=duplicate-code, too-many-lines
 from django.urls import reverse
 from nautobot.apps.testing import TestCase, ViewTestCases, post_data
-from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.ipam.models import Prefix
 from nautobot.users.models import ObjectPermission
@@ -376,85 +375,6 @@ class PolicyUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
             f'csvobj3,panos,"{pol_rule.id}",Active',
         )
 
-    def test_device_weight_permissions(self):
-        """Test that the device weights cannot be updated without dcim.change_device and nautobot_firewall_models.change_policy permissions."""
-        # Remove all user permissions and add view permissions for dcim.device and nautobot_firewall_models.policy
-        ObjectPermission.objects.all().delete()
-        self.add_permissions("dcim.view_device", "nautobot_firewall_models.view_policy")
-
-        # Retrieve the policy view and assert that the weight form field is disabled
-        fixtures.assign_policies()
-        policy = Policy.objects.get(name="Policy 2")
-
-        weight = policy.policydevicem2m_set.first().weight
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="device-weight-input1" type="number" name="{policy.assigned_devices.first().pk}" value="{weight}" disabled>',
-            html=True,
-        )
-
-        # Assert that trying to submit the form with insufficient permissions fails
-        post_request = {
-            "path": reverse("plugins:nautobot_firewall_models:policy_devices", kwargs={"pk": policy.pk}),
-            "data": post_data({str(policy.assigned_devices.first().pk): "150"}),
-        }
-        self.assertHttpStatus(self.client.post(**post_request), 403)
-
-        # Give the user "change" permissions
-        self.add_permissions("dcim.change_device", "nautobot_firewall_models.change_policy")
-
-        # Form field is no longer disabled
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="device-weight-input1" type="number" name="{policy.assigned_devices.first().pk}" value="{weight}">',
-            html=True,
-        )
-
-        # Post succeeds
-        self.assertHttpStatus(self.client.post(**post_request), 302)
-
-    def test_dynamicgroup_weight_permissions(self):
-        """Test that the dynamicgroup weights cannot be updated without dcim.change_dynamicgroup and nautobot_firewall_models.change_policy permissions."""
-
-        # Remove all user permissions and add view permissions for dcim.device and nautobot_firewall_models.policy
-        ObjectPermission.objects.all().delete()
-        self.add_permissions("extras.view_dynamicgroup", "nautobot_firewall_models.view_policy")
-
-        # Retrieve the policy view and assert that the weight form field is disabled
-        fixtures.assign_policies()
-        policy = Policy.objects.get(name="Policy 3")
-
-        weight = policy.policydynamicgroupm2m_set.first().weight
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="dynamicgroup-weight-input1" type="number" name="{policy.assigned_dynamic_groups.first().pk}" value="{weight}" disabled>',
-            html=True,
-        )
-
-        # Assert that trying to submit the form with insufficient permissions fails
-        post_request = {
-            "path": reverse("plugins:nautobot_firewall_models:policy_dynamic-groups", kwargs={"pk": policy.pk}),
-            "data": post_data({str(policy.assigned_dynamic_groups.first().pk): "150"}),
-        }
-        self.assertHttpStatus(self.client.post(**post_request), 403)
-
-        # Give the user "change" permissions
-        self.add_permissions("extras.change_dynamicgroup", "nautobot_firewall_models.change_policy")
-
-        # Form field is no longer disabled
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="dynamicgroup-weight-input1" type="number" name="{policy.assigned_dynamic_groups.first().pk}" value="{weight}">',
-            html=True,
-        )
-
-        # Post succeeds
-        self.assertHttpStatus(self.client.post(**post_request), 302)
-
 
 class NATPolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     """Test the Policy viewsets."""
@@ -513,85 +433,6 @@ class NATPolicyUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
             f'csvrule2,"{nat_pol_rule.id}",Active',
             f'csvrule3,"{nat_pol_rule.id}",Active',
         )
-
-    def test_device_weight_permissions(self):
-        """Test that the device weights cannot be updated without dcim.change_device and nautobot_firewall_models.change_natpolicy permissions."""
-        # Remove all user permissions and add view permissions for dcim.device and nautobot_firewall_models.natpolicy
-        ObjectPermission.objects.all().delete()
-        self.add_permissions("dcim.view_device", "nautobot_firewall_models.view_natpolicy")
-
-        # Retrieve the policy view and assert that the weight form field is disabled
-        fixtures.assign_policies()
-        policy = NATPolicy.objects.get(name="NAT Policy 2")
-
-        weight = policy.natpolicydevicem2m_set.first().weight
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="device-weight-input1" type="number" name="{policy.assigned_devices.first().pk}" value="{weight}" disabled>',
-            html=True,
-        )
-
-        # Assert that trying to submit the form with insufficient permissions fails
-        post_request = {
-            "path": reverse("plugins:nautobot_firewall_models:natpolicy_devices", kwargs={"pk": policy.pk}),
-            "data": post_data({str(policy.assigned_devices.first().pk): "150"}),
-        }
-        self.assertHttpStatus(self.client.post(**post_request), 403)
-
-        # Give the user "change" permissions
-        self.add_permissions("dcim.change_device", "nautobot_firewall_models.change_natpolicy")
-
-        # Form field is no longer disabled
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="device-weight-input1" type="number" name="{policy.assigned_devices.first().pk}" value="{weight}">',
-            html=True,
-        )
-
-        # Post succeeds
-        self.assertHttpStatus(self.client.post(**post_request), 302)
-
-    def test_dynamicgroup_weight_permissions(self):
-        """Test that the dynamicgroup weights cannot be updated without dcim.change_dynamicgroup and nautobot_firewall_models.change_natpolicy permissions."""
-
-        # Remove all user permissions and add view permissions for dcim.device and nautobot_firewall_models.natpolicy
-        ObjectPermission.objects.all().delete()
-        self.add_permissions("extras.view_dynamicgroup", "nautobot_firewall_models.view_natpolicy")
-
-        # Retrieve the policy view and assert that the weight form field is disabled
-        fixtures.assign_policies()
-        policy = NATPolicy.objects.get(name="NAT Policy 3")
-
-        weight = policy.natpolicydynamicgroupm2m_set.first().weight
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="dynamicgroup-weight-input1" type="number" name="{policy.assigned_dynamic_groups.first().pk}" value="{weight}" disabled>',
-            html=True,
-        )
-
-        # Assert that trying to submit the form with insufficient permissions fails
-        post_request = {
-            "path": reverse("plugins:nautobot_firewall_models:natpolicy_dynamic-groups", kwargs={"pk": policy.pk}),
-            "data": post_data({str(policy.assigned_dynamic_groups.first().pk): "150"}),
-        }
-        self.assertHttpStatus(self.client.post(**post_request), 403)
-
-        # Give the user "change" permissions
-        self.add_permissions("extras.change_dynamicgroup", "nautobot_firewall_models.change_natpolicy")
-
-        # Form field is no longer disabled
-        response = self.client.get(policy.get_absolute_url())
-        self.assertContains(
-            response,
-            f'<input id="dynamicgroup-weight-input1" type="number" name="{policy.assigned_dynamic_groups.first().pk}" value="{weight}">',
-            html=True,
-        )
-
-        # Post succeeds
-        self.assertHttpStatus(self.client.post(**post_request), 302)
 
 
 class PolicyRuleTypeUIViewTest(TestCase):
@@ -1005,50 +846,6 @@ class NestedAddressGroupUIViewTest(TestCase):
         self.assertContains(response, "A group can not contain itself")
 
 
-class ZoneDevicePickerUIViewTest(TestCase):
-    """Test the Zone form's single picker for Devices and Virtual Machines."""
-
-    def setUp(self):
-        """Grant access to Zones, Devices and Virtual Machines."""
-        super().setUp()
-        self.add_permissions(
-            "nautobot_firewall_models.add_zone",
-            "nautobot_firewall_models.view_zone",
-            "nautobot_firewall_models.view_zonegroup",
-            "dcim.view_device",
-            "virtualization.view_virtualmachine",
-            "extras.view_status",
-        )
-        self.url = reverse("plugins:nautobot_firewall_models:zone_add")
-
-    def test_form_shows_one_picker_for_devices_and_virtual_machines(self):
-        """The Zone form has one searching picker in place of the separate Device field."""
-        response = self.client.get(self.url)
-
-        self.assertContains(response, 'name="devices_and_groups"')
-        self.assertContains(response, 'data-url="/api/plugins/firewall/grouped-objects/devices/"')
-        self.assertNotContains(response, 'name="devices"')
-        self.assertNotContains(response, 'name="virtual_machines"')
-
-    def test_picker_saves_devices_and_virtual_machines(self):
-        """The picker's selection is split into Devices and Virtual Machines."""
-        fixtures.create_sample_env()
-        device = Device.objects.first()
-        vm = fixtures.create_virtual_machine()
-        data = {
-            "name": "dmz",
-            "zone_group": fixtures.default_zone_group().pk,
-            "status": Status.objects.get(name="Active").pk,
-            "devices_and_groups": [f"object:{device.pk}", f"group:{vm.pk}"],
-        }
-        response = self.client.post(self.url, post_data(data))
-
-        self.assertHttpStatus(response, 302)
-        zone = Zone.objects.get(name="dmz")
-        self.assertEqual(list(zone.devices.all()), [device])
-        self.assertEqual(list(zone.virtual_machines.all()), [vm])
-
-
 class ManagedLocallyGroupWithoutMembersUIViewTest(TestCase):
     """Test that every group form saves a Managed Locally group with no members selected."""
 
@@ -1106,3 +903,24 @@ class ManagedLocallyServiceObjectUIViewTest(TestCase):
         self.assertHttpStatus(response, 200)
         self.assertContains(response, "An IP protocol is required unless the service is Managed Locally.")
         self.assertFalse(ServiceObject.objects.filter(name="web").exists())
+
+
+class TrustBandUIViewTest(TestCase):
+    """Test the Trust Band report on the band page and list."""
+
+    def setUp(self):
+        """Grant access to bands and their rules."""
+        super().setUp()
+        self.add_permissions("nautobot_firewall_models.view_policyband", "nautobot_firewall_models.view_policyrule")
+        self.band = PolicyBand.objects.create(name="Low Trust", index=40, trust_band=True)
+
+    def test_band_page_and_list_flag_a_missing_final_rule(self):
+        """The band page warns and the list marks the band Missing until it has a Final rule."""
+        list_url = reverse("plugins:nautobot_firewall_models:policyband_list")
+        self.assertContains(self.client.get(self.band.get_absolute_url()), "No Final rule.")
+        self.assertContains(self.client.get(list_url), ">Missing<")
+
+        PolicyRule.objects.create(name="deny", action="deny", rule_type="panos", band=self.band, position="final")
+
+        self.assertNotContains(self.client.get(self.band.get_absolute_url()), "No Final rule.")
+        self.assertNotContains(self.client.get(list_url), ">Missing<")

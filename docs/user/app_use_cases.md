@@ -8,12 +8,12 @@ A detailed walkthrough is provided in the [Introducing Nautobot Firewall Models]
 
 ### Assigning Policies
 
-There are three primary ways of assigning policies (`Policy` or `NATPolicy` objects) to devices:
+Policies (`Policy` or `NATPolicy` objects) are assigned to firewalls, under Security > Appliances:
 
-- Directly via the `assigned_devices` attribute on a policy object.
-- Dynamically by assigning an existing `DynamicGroup` object to the `assigned_dynamic_groups` field on a policy object.
-- By creating a new `Relationship` specifying additional targets for policy association. This can be, for example, used to associate a policy with an `Interface` object.
-    + The use of a Relationship _may_ limit future integrations with parsing or templating.
+- Create a `Firewall` for each PAN-OS firewall, bound to its Device or Virtual Machine.
+- Pair two Firewalls in an `HAGroup`, with the management address they share.
+- Collect Firewalls and HA Groups in a `FirewallGroup` to assign a policy to all of them at once.
+- Assign each policy to Firewalls, HA Groups or Firewall Groups in its Assigned To field. A Firewall in an HA Group is assigned through its HA Group.
 
 Although policies can be created without any rules it is recommended to create the required underlying objects first before moving to the policy definitions. [Creation Order](../dev/models.md#creation-order) provides an ordered list of steps for creating and assigning, objects, needed for policy creation.
 

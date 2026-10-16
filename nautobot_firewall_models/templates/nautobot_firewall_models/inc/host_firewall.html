@@ -1,0 +1,23 @@
+{% load helpers %}
+<div class="card">
+    <div class="card-header"><strong>Firewall</strong></div>
+    {% if firewall %}
+        <table class="table table-hover card-body">
+            <tr>
+                <th>Firewall</th>
+                <td><a href="{{ firewall.get_absolute_url }}">{{ firewall }}</a></td>
+            </tr>
+            <tr>
+                <th>HA Group</th>
+                <td>{% if firewall.ha_group %}<a href="{{ firewall.ha_group.get_absolute_url }}">{{ firewall.ha_group }}</a>{% else %}{{ None|placeholder }}{% endif %}</td>
+            </tr>
+        </table>
+        <div class="card-footer">
+            <a href="{{ firewall.policy_rules_url }}">View this Firewall's Policy Rules in firewall order</a>
+        </div>
+    {% else %}
+        <div class="card-body">
+            <span class="text-secondary">Not a Firewall</span>
+        </div>
+    {% endif %}
+</div>

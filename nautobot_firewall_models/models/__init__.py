@@ -5,17 +5,14 @@ from .address import (
     AddressObject,
     AddressObjectGroup,
 )
+from .appliance import Firewall, FirewallGroup, HAGroup
 from .nat_policy import (
     NATPolicy,
-    NATPolicyDeviceM2M,
-    NATPolicyDynamicGroupM2M,
     NATPolicyRule,
 )
 from .security_policy import (
     Policy,
     PolicyBand,
-    PolicyDeviceM2M,
-    PolicyDynamicGroupM2M,
     PolicyRule,
 )
 from .service import (
@@ -33,14 +30,13 @@ __all__ = (
     "ApplicationObject",
     "ApplicationObjectGroup",
     "FQDN",
+    "Firewall",
+    "FirewallGroup",
+    "HAGroup",
     "NATPolicy",
-    "NATPolicyDeviceM2M",
-    "NATPolicyDynamicGroupM2M",
     "NATPolicyRule",
     "Policy",
     "PolicyBand",
-    "PolicyDeviceM2M",
-    "PolicyDynamicGroupM2M",
     "PolicyRule",
     "ServiceObject",
     "ServiceObjectGroup",

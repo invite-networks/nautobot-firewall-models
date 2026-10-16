@@ -5,8 +5,7 @@ from unittest import mock
 
 from django.urls import reverse
 from nautobot.apps.testing import APITestCase, APIViewTestCases
-from nautobot.dcim.models import Device, DeviceType, Location, Platform
-from nautobot.extras.models import Role, Status
+from nautobot.extras.models import Status
 from nautobot.ipam.models import Prefix
 from nautobot.users.models import ObjectPermission
 from rest_framework import status as drf_status
@@ -411,43 +410,6 @@ class NATPolicyAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewT
 ###########################
 # Through Models
 ###########################
-class PolicyDeviceM2MAPIViewTest(APIViewTestCases.APIViewTestCase):
-    """Test the PolicyDeviceM2M viewsets."""
-
-    model = models.PolicyDeviceM2M
-    bulk_update_data = {"weight": 1000}
-
-    @classmethod
-    def setUpTestData(cls):
-        """Create test data for API calls."""
-        fixtures.assign_policies()
-        policy = models.Policy.objects.first()
-        location = Location.objects.get(name="DFW02")
-        dev_role = Role.objects.get(name="WAN")
-        status = Status.objects.get(name="Active")
-        platform = Platform.objects.get(name="Juniper")
-        dev_type = DeviceType.objects.get(model="SRX300")
-        dev1 = Device.objects.create(
-            name="TEST-DEV-01",
-            role=dev_role,
-            device_type=dev_type,
-            location=location,
-            status=status,
-            platform=platform,
-        )
-        dev2 = Device.objects.create(
-            name="TEST-DEV-02",
-            role=dev_role,
-            device_type=dev_type,
-            location=location,
-            status=status,
-            platform=platform,
-        )
-
-        cls.create_data = [
-            {"device": dev1.id, "policy": policy.id, "weight": 100},
-            {"device": dev2.id, "policy": policy.id, "weight": 200},
-        ]
 
 
 class ExpandedZonesAPITest(APITestCase):
@@ -529,59 +491,6 @@ class ExpandedZonesAPITest(APITestCase):
         nat_rule = response.data["data"]["nat_policy_rules"][0]
         self.assertEqual(nat_rule["expanded_source_zones"], [{"name": "DMZ"}, {"name": "LAN"}])
         self.assertEqual(nat_rule["expanded_destination_zones"], [{"name": "WAN"}])
-
-
-class ZoneDevicesAPITest(APITestCase):
-    """Test that a Zone can be bound to several Devices over REST and read back over GraphQL."""
-
-    @classmethod
-    def setUpTestData(cls):
-        """Create firewalls to bind zones to."""
-        fixtures.assign_policies()
-        cls.devices = list(Device.objects.filter(name__in=["DFW02-WAN00", "HOU02-WAN00"]))
-
-    def setUp(self):
-        """Grant access to zones and devices."""
-        super().setUp()
-        self.add_permissions(
-            "nautobot_firewall_models.add_zone",
-            "nautobot_firewall_models.view_zone",
-            "nautobot_firewall_models.view_zonegroup",
-            "dcim.view_device",
-            "extras.view_status",
-        )
-
-    def test_create_zone_with_multiple_devices(self):
-        """POSTing a Zone with two devices binds both, and the detail view returns them."""
-        url = reverse("plugins-api:nautobot_firewall_models-api:zone-list")
-        data = {
-            "name": "shared",
-            "zone_group": str(fixtures.default_zone_group().pk),
-            "status": Status.objects.get(name="Active").pk,
-            "devices": [str(dev.pk) for dev in self.devices],
-        }
-        response = self.client.post(url, data, format="json", **self.header)
-        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
-        zone = models.Zone.objects.get(name="shared")
-        self.assertEqual(set(zone.devices.all()), set(self.devices))
-
-        detail = reverse("plugins-api:nautobot_firewall_models-api:zone-detail", kwargs={"pk": zone.pk})
-        response = self.client.get(f"{detail}?exclude_m2m=false", **self.header)
-        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
-        self.assertEqual({dev["id"] for dev in response.data["devices"]}, {dev.pk for dev in self.devices})
-
-    def test_graphql_zone_devices(self):
-        """GraphQL lists each Zone's devices."""
-        zone = models.Zone.objects.create(
-            name="shared", status=Status.objects.get(name="Active"), zone_group=fixtures.default_zone_group()
-        )
-        zone.devices.set(self.devices)
-        query = 'query { zones(name: "shared") { devices { name } } }'
-        response = self.client.post(reverse("graphql-api"), {"query": query}, format="json", **self.header)
-        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
-        self.assertNotIn("errors", response.data)
-        names = sorted(dev["name"] for dev in response.data["data"]["zones"][0]["devices"])
-        self.assertEqual(names, ["DFW02-WAN00", "HOU02-WAN00"])
 
 
 class RuleTypeAPITest(APITestCase):
@@ -847,7 +756,7 @@ class GroupedObjectsAPITest(APITestCase):
 
     def test_every_kind_responds(self):
         """Every picker kind has a working search."""
-        for kind in ("zones", "addresses", "services", "users", "applications"):
+        for kind in ("zones", "addresses", "services", "users", "applications", "firewalls", "appliances"):
             self.assertHttpStatus(self._get(kind=kind), drf_status.HTTP_200_OK)
 
 
@@ -1000,55 +909,6 @@ class NestedAddressGroupAPITest(APITestCase):
         self.assertIn("address_object_groups", response.data)
 
 
-class ZoneVirtualMachineAPITest(APITestCase):
-    """Test binding Zones to Virtual Machines over the REST API and the picker search."""
-
-    def setUp(self):
-        """Grant access to Zones, Devices and Virtual Machines."""
-        super().setUp()
-        self.add_permissions(
-            "nautobot_firewall_models.add_zone",
-            "nautobot_firewall_models.view_zone",
-            "nautobot_firewall_models.view_zonegroup",
-            "dcim.view_device",
-            "virtualization.view_virtualmachine",
-        )
-        self.vm = fixtures.create_virtual_machine()
-
-    def test_create_zone_with_virtual_machine(self):
-        """A Zone can be created bound to a Virtual Machine, and filtered by it."""
-        url = reverse("plugins-api:nautobot_firewall_models-api:zone-list")
-        response = self.client.post(
-            url,
-            {
-                "name": "vm zone",
-                "zone_group": str(fixtures.default_zone_group().pk),
-                "virtual_machines": [str(self.vm.pk)],
-            },
-            format="json",
-            **self.header,
-        )
-
-        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
-        response = self.client.get(f"{url}?virtual_machines={self.vm.name}", **self.header)
-        self.assertEqual([i["name"] for i in response.data["results"]], ["vm zone"])
-
-    def test_picker_search_lists_devices_then_virtual_machines(self):
-        """The devices search lists Devices, then Virtual Machines, under their own headings."""
-        fixtures.create_sample_env()
-        url = reverse("plugins-api:nautobot_firewall_models-api:grouped-objects", kwargs={"kind": "devices"})
-        response = self.client.get(url, {"limit": 1000}, **self.header)
-
-        self.assertHttpStatus(response, drf_status.HTTP_200_OK)
-        headings = [i["group"]["name"] for i in response.data["results"]]
-        self.assertEqual(headings[-1], "Virtual Machines")
-        self.assertEqual(set(headings), {"Devices", "Virtual Machines"})
-        self.assertIn(
-            {"id": f"group:{self.vm.pk}", "name": "vm01", "display": "vm01", "group": {"name": "Virtual Machines"}},
-            response.data["results"],
-        )
-
-
 class FinalPositionAPITest(APITestCase):
     """Test the Final position over the REST API."""
 
@@ -1078,3 +938,23 @@ class FinalPositionAPITest(APITestCase):
 
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
         self.assertIn("action", response.data)
+
+
+class TrustBandAPITest(APITestCase):
+    """Test the Trust Band report over the REST API."""
+
+    def setUp(self):
+        """Grant view access to bands."""
+        super().setUp()
+        self.add_permissions("nautobot_firewall_models.view_policyband")
+        self.band = models.PolicyBand.objects.create(name="Low Trust", index=40, trust_band=True)
+
+    def test_band_reports_missing_final_rule(self):
+        """The band shows missing_final_rule, and the filter lists bands missing one."""
+        url = reverse("plugins-api:nautobot_firewall_models-api:policyband-detail", kwargs={"pk": self.band.pk})
+        response = self.client.get(url, **self.header)
+        self.assertEqual((response.data["trust_band"], response.data["missing_final_rule"]), (True, True))
+
+        list_url = reverse("plugins-api:nautobot_firewall_models-api:policyband-list")
+        response = self.client.get(f"{list_url}?missing_final_rule=true", **self.header)
+        self.assertEqual([i["name"] for i in response.data["results"]], ["Low Trust"])

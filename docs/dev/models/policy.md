@@ -2,7 +2,7 @@
 
 A Policy models set of security rules permitting or blocking data packets.
 
-Policy is defined as a collection of Policy Rules. Policies are assigned to Devices and Dynamic Groups.
+Policy is defined as a collection of Policy Rules. A PAN-OS Policy is assigned to Firewalls, HA Groups and Firewall Groups.
 
 You can think of a policy as roughly corresponding to access lists or policies on security appliances.
 
@@ -13,10 +13,11 @@ You can think of a policy as roughly corresponding to access lists or policies o
     * Every Policy Rule in the Policy must be of this type. It cannot be changed once the Policy exists.
 * Description (optional, string)
 * Policy Rules (M2M to PolicyRule via PolicyRuleM2M)
-* Assigned Devices (M2M to Device via PolicyDeviceM2M)
-    * Assigns a Policy to a Device
-* Assigned Dynamic Groups (M2M to DynamicGroup via PolicyDynamicGroupM2M)
-    * Assigns a Policy to a [DynamicGroup](https://nautobot.readthedocs.io/en/stable/additional-features/dynamic-groups/) which can then be used to dynamically assign to a Device/VirtualMachine or set of Devices/VirtualMachines
+* Assigned Firewalls (M2M to Firewall)
+* Assigned HA Groups (M2M to HAGroup)
+* Assigned Firewall Groups (M2M to FirewallGroup)
+    * The Firewalls, HA Groups and Firewall Groups the Policy is assigned to, picked in one Assigned To field. A Firewall that is in an HA Group is assigned through its HA Group.
+    * Only PAN-OS Policies can be assigned.
 * Status (FK to Status)
 * Tags (M2M to Tag)
 

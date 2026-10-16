@@ -1,0 +1,8 @@
+{% load helpers %}
+{% if not record.trust_band %}
+    {{ None|placeholder }}
+{% elif record.missing_final_rule %}
+    <span class="badge bg-danger" title="This Trust Band has no Final deny or drop rule">Missing</span>
+{% else %}
+    <span class="text-success" title="Ends with a Final rule"><i class="mdi mdi-check-bold"></i></span>
+{% endif %}

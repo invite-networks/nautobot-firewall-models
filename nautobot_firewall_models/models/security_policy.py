@@ -4,12 +4,13 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
-from nautobot.core.models.generics import BaseModel, PrimaryModel
+from nautobot.core.models.generics import PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models import choices
 from nautobot_firewall_models.models.address import host_relative_names, render_addresses
+from nautobot_firewall_models.models.appliance import refuse_ha_members
 from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
@@ -37,6 +38,11 @@ class PolicyBand(PrimaryModel):
     name = models.CharField(max_length=CHARFIELD_MAX_LENGTH, unique=True)
     index = models.PositiveSmallIntegerField(unique=True, help_text="Bands are evaluated from lowest to highest.")
     description = models.CharField(max_length=1024, blank=True)
+    trust_band = models.BooleanField(
+        default=False,
+        verbose_name="Trust Band",
+        help_text="Must end with a Final deny or drop rule, e.g. a Low Trust or Medium Trust band.",
+    )
 
     class Meta:
         """Meta class."""
@@ -47,6 +53,14 @@ class PolicyBand(PrimaryModel):
     def __str__(self):
         """Stringify instance."""
         return self.name
+
+    @property
+    def missing_final_rule(self):
+        """Whether this is a Trust Band with no Final rule yet, so it does not end with an explicit deny.
+
+        This is reported, not enforced, so a band can be saved while its rules are still being built.
+        """
+        return self.trust_band and not self.policy_rules.filter(position="final").exists()
 
 
 @extras_features(
@@ -448,7 +462,7 @@ class Policy(PrimaryModel):
     """
     The overarching model that is the full firewall policy with all underlying rules and child objects.
 
-    Each Policy can be assigned to both devices and to dynamic groups which in turn can assign the policy to a related device.
+    A PAN-OS Policy is assigned to Firewalls, HA Groups and Firewall Groups.
     """
 
     description = models.CharField(
@@ -465,19 +479,23 @@ class Policy(PrimaryModel):
     policy_rules = models.ManyToManyField(
         to=PolicyRule, blank=True, related_name="policies", verbose_name="Policy Rules"
     )
-    assigned_devices = models.ManyToManyField(
-        to="dcim.Device",
-        through="PolicyDeviceM2M",
-        related_name="firewall_policies",
+    assigned_firewalls = models.ManyToManyField(
+        to="nautobot_firewall_models.Firewall",
+        related_name="policies",
         blank=True,
-        verbose_name="Assigned Devices",
+        verbose_name="Assigned Firewalls",
     )
-    assigned_dynamic_groups = models.ManyToManyField(
-        to="extras.DynamicGroup",
-        through="PolicyDynamicGroupM2M",
-        related_name="firewall_policies",
+    assigned_ha_groups = models.ManyToManyField(
+        to="nautobot_firewall_models.HAGroup",
+        related_name="policies",
         blank=True,
-        verbose_name="Assigned Dynamic Groups",
+        verbose_name="Assigned HA Groups",
+    )
+    assigned_firewall_groups = models.ManyToManyField(
+        to="nautobot_firewall_models.FirewallGroup",
+        related_name="policies",
+        blank=True,
+        verbose_name="Assigned Firewall Groups",
     )
     status = StatusField(
         on_delete=models.PROTECT,
@@ -507,6 +525,24 @@ class Policy(PrimaryModel):
                 raise ValidationError({"rule_type": "The rule type cannot be changed once the Policy exists."})
 
     @staticmethod
+    def validate_assignments(rule_type, assignments):
+        """Refuse assignments to a Policy that is not PAN-OS, and Firewalls that are in an HA Group.
+
+        `assignments` maps each assigned_* field to the Firewalls, HA Groups or Firewall Groups being assigned.
+        """
+        errors = refuse_ha_members("assigned_firewalls", assignments.get("assigned_firewalls"))
+        if rule_type and rule_type != "panos":
+            errors.update(
+                {
+                    field: "Only PAN-OS Policies can be assigned to Firewalls, HA Groups and Firewall Groups."
+                    for field in ("assigned_firewalls", "assigned_ha_groups", "assigned_firewall_groups")
+                    if assignments.get(field)
+                }
+            )
+        if errors:
+            raise ValidationError(errors)
+
+    @staticmethod
     def validate_policy_rules(rule_type, policy_rules):
         """Refuse Policy Rules whose type differs from the Policy's."""
         if not rule_type:
@@ -531,44 +567,3 @@ class Policy(PrimaryModel):
     def __str__(self):
         """Stringify instance."""
         return self.name
-
-
-###########################
-# Through Models
-###########################
-
-
-class PolicyDeviceM2M(BaseModel):
-    """Through model to add weight to the the Policy & Device relationship."""
-
-    policy = models.ForeignKey("nautobot_firewall_models.Policy", on_delete=models.CASCADE)
-    device = models.ForeignKey("dcim.Device", on_delete=models.PROTECT)
-    weight = models.PositiveSmallIntegerField(default=100)
-
-    class Meta:
-        """Meta class."""
-
-        ordering = ["weight"]
-        unique_together = ["policy", "device"]
-
-    def __str__(self):
-        """Stringify instance."""
-        return f"{self.policy.name} - {self.device.name} - {self.weight}"
-
-
-class PolicyDynamicGroupM2M(BaseModel):
-    """Through model to add weight to the the Policy & DynamicGroup relationship."""
-
-    policy = models.ForeignKey("nautobot_firewall_models.Policy", on_delete=models.CASCADE)
-    dynamic_group = models.ForeignKey("extras.DynamicGroup", on_delete=models.PROTECT, verbose_name="Dynamic Group")
-    weight = models.PositiveSmallIntegerField(default=100)
-
-    class Meta:
-        """Meta class."""
-
-        ordering = ["weight"]
-        unique_together = ["policy", "dynamic_group"]
-
-    def __str__(self):
-        """Stringify instance."""
-        return f"{self.policy.name} - {self.dynamic_group.name} - {self.weight}"

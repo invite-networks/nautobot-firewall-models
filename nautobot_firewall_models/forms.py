@@ -6,22 +6,41 @@ from nautobot.apps.forms import (
     BulkEditNullBooleanSelect,
     DynamicModelChoiceField,
     DynamicModelMultipleChoiceField,
+    StaticSelect2,
     TagFilterField,
     add_blank_choice,
 )
+from nautobot.core.forms.constants import BOOLEAN_WITH_BLANK_CHOICES
 from nautobot.dcim.models import Device
 from nautobot.extras.forms import (
     NautobotBulkEditForm,
     NautobotFilterForm,
     NautobotModelForm,
 )
-from nautobot.extras.models import DynamicGroup, Tag
+from nautobot.extras.models import Tag
 from nautobot.ipam.models import VRF, IPAddress, Prefix
 from nautobot.tenancy.forms import TenancyFilterForm, TenancyForm
 from nautobot.tenancy.models import Tenant
 from nautobot.virtualization.models import VirtualMachine
 
 from nautobot_firewall_models import choices, fields, models
+
+# The Firewalls, HA Groups and Firewall Groups a Policy or NAT Policy is assigned to, or a Zone is bound to, are picked
+# in one field. Each entry is (grouped objects API kind, label, ((value prefix, field name), ...)).
+APPLIANCE_PICKER = (
+    "appliances",
+    "Assigned To",
+    (
+        ("firewall", "assigned_firewalls"),
+        ("hagroup", "assigned_ha_groups"),
+        ("firewallgroup", "assigned_firewall_groups"),
+    ),
+)
+ZONE_APPLIANCE_PICKER = (
+    "appliances",
+    "Bound To",
+    (("firewall", "firewalls"), ("hagroup", "ha_groups"), ("firewallgroup", "firewall_groups")),
+)
 
 
 class FQDNFilterForm(NautobotFilterForm):
@@ -477,30 +496,53 @@ class ZoneFilterForm(NautobotFilterForm):
         queryset=models.ZoneGroup.objects.all(), to_field_name="name", required=False, label="Zone Group"
     )
     vrfs = DynamicModelChoiceField(queryset=VRF.objects.all(), label="VRF")
-    devices = DynamicModelChoiceField(queryset=Device.objects.all(), label="Device")
-    virtual_machines = DynamicModelChoiceField(queryset=VirtualMachine.objects.all(), label="Virtual Machine")
+    firewalls = DynamicModelChoiceField(queryset=models.Firewall.objects.all(), required=False, label="Firewall")
+    ha_groups = DynamicModelChoiceField(queryset=models.HAGroup.objects.all(), required=False, label="HA Group")
+    firewall_groups = DynamicModelChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False, label="Firewall Group"
+    )
 
 
 class ZoneForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
-    """Zone creation/edit form, with one picker for the Devices and Virtual Machines the Zone is bound to."""
+    """Zone creation/edit form, with one picker for the Firewalls, HA Groups and Firewall Groups it is bound to."""
 
+    combined_pickers = {"bound_to": ZONE_APPLIANCE_PICKER}
     zone_group = DynamicModelChoiceField(queryset=models.ZoneGroup.objects.all(), label="Zone Group")
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
-    devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
-    virtual_machines = DynamicModelMultipleChoiceField(
-        queryset=VirtualMachine.objects.all(), required=False, label="Virtual Machines"
+    firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    ha_groups = DynamicModelMultipleChoiceField(
+        queryset=models.HAGroup.objects.all(), required=False, label="HA Groups"
+    )
+    firewall_groups = DynamicModelMultipleChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False, label="Firewall Groups"
     )
 
     class Meta:
         """Meta attributes."""
 
         model = models.Zone
-        fields = ["name", "zone_group", "description", "vrfs", "devices", "virtual_machines", "status", "tags"]
+        fields = [
+            "name",
+            "zone_group",
+            "description",
+            "vrfs",
+            "firewalls",
+            "ha_groups",
+            "firewall_groups",
+            "status",
+            "tags",
+        ]
 
     def __init__(self, *args, **kwargs):
-        """Show one picker for Devices and Virtual Machines."""
+        """Show one picker for the Firewalls, HA Groups and Firewall Groups."""
         super().__init__(*args, **kwargs)
         self.combine_grouped_fields()
+
+    def clean(self):
+        """Refuse Firewalls that are in an HA Group."""
+        super().clean()
+        models.Zone.validate_bindings(self.cleaned_data.get("firewalls"))
+        return self.cleaned_data
 
 
 class ZoneBulkEditForm(NautobotBulkEditForm):
@@ -510,15 +552,11 @@ class ZoneBulkEditForm(NautobotBulkEditForm):
     zone_group = DynamicModelChoiceField(queryset=models.ZoneGroup.objects.all(), required=False, label="Zone Group")
     description = forms.CharField(required=False)
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
-    devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
-    virtual_machines = DynamicModelMultipleChoiceField(
-        queryset=VirtualMachine.objects.all(), required=False, label="Virtual Machines"
-    )
 
     class Meta:
         """Meta attributes."""
 
-        nullable_fields = ["description", "vrfs", "devices", "virtual_machines"]
+        nullable_fields = ["description", "vrfs"]
 
 
 class ZoneGroupFilterForm(NautobotFilterForm):
@@ -572,6 +610,12 @@ class PolicyBandFilterForm(NautobotFilterForm):
         help_text="Search within Name or Description.",
     )
     name = forms.CharField(required=False, label="Name")
+    trust_band = forms.NullBooleanField(required=False, widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES))
+    missing_final_rule = forms.NullBooleanField(
+        required=False,
+        label="Missing Final Rule",
+        widget=StaticSelect2(choices=BOOLEAN_WITH_BLANK_CHOICES),
+    )
 
 
 class PolicyBandForm(NautobotModelForm):
@@ -581,13 +625,14 @@ class PolicyBandForm(NautobotModelForm):
         """Meta attributes."""
 
         model = models.PolicyBand
-        fields = ["name", "index", "description", "tags"]
+        fields = ["name", "index", "trust_band", "description", "tags"]
 
 
 class PolicyBandBulkEditForm(NautobotBulkEditForm):
     """PolicyBand bulk edit form."""
 
     pk = DynamicModelMultipleChoiceField(queryset=models.PolicyBand.objects.all(), widget=forms.MultipleHiddenInput)
+    trust_band = forms.NullBooleanField(required=False, widget=BulkEditNullBooleanSelect, label="Trust Band")
     description = forms.CharField(required=False)
 
     class Meta:
@@ -599,7 +644,7 @@ class PolicyBandBulkEditForm(NautobotBulkEditForm):
 class PolicyRuleFilterForm(NautobotFilterForm):
     """Filter form to filter searches."""
 
-    field_order = ["q", "name", "rule_type", "band", "position", "chain", "device"]
+    field_order = ["q", "name", "rule_type", "band", "position", "chain", "firewall"]
 
     model = models.PolicyRule
     q = forms.CharField(
@@ -614,7 +659,7 @@ class PolicyRuleFilterForm(NautobotFilterForm):
     position = forms.MultipleChoiceField(choices=choices.POSITION_CHOICES, required=False)
     rule_type = forms.MultipleChoiceField(choices=choices.RULE_TYPE_CHOICES, required=False, label="Rule Type")
     chain = forms.MultipleChoiceField(choices=choices.CHAIN_CHOICES, required=False)
-    device = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
+    firewall = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
     tag = TagFilterField(models.PolicyRule)
 
 
@@ -793,7 +838,7 @@ class PolicyRuleBulkEditForm(NautobotBulkEditForm):
 class PolicyFilterForm(NautobotFilterForm, TenancyFilterForm):
     """Filter form to filter searches."""
 
-    field_order = ["q", "name", "rule_type", "assigned_devices", "assigned_dynamic_groups"]
+    field_order = ["q", "name", "rule_type", "assigned_firewalls", "assigned_ha_groups", "assigned_firewall_groups"]
 
     model = models.Policy
     rule_type = forms.MultipleChoiceField(choices=choices.RULE_TYPE_CHOICES, required=False, label="Rule Type")
@@ -803,15 +848,21 @@ class PolicyFilterForm(NautobotFilterForm, TenancyFilterForm):
         help_text="Search within Name or Description.",
     )
     name = forms.CharField(required=False, label="Name")
-    assigned_devices = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
-    assigned_dynamic_groups = DynamicModelChoiceField(queryset=DynamicGroup.objects.all(), required=False)
+    assigned_firewalls = DynamicModelChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    assigned_ha_groups = DynamicModelChoiceField(queryset=models.HAGroup.objects.all(), required=False)
+    assigned_firewall_groups = DynamicModelChoiceField(queryset=models.FirewallGroup.objects.all(), required=False)
 
 
-class PolicyForm(NautobotModelForm, TenancyForm):
-    """Policy creation/edit form."""
+class PolicyForm(fields.ObjectOrGroupFormMixin, NautobotModelForm, TenancyForm):
+    """Policy creation/edit form, with one picker for the Firewalls, HA Groups and Firewall Groups it is assigned to."""
 
-    assigned_devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
-    assigned_dynamic_groups = DynamicModelMultipleChoiceField(queryset=DynamicGroup.objects.all(), required=False)
+    combined_pickers = {"assigned_to": APPLIANCE_PICKER}
+
+    assigned_firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    assigned_ha_groups = DynamicModelMultipleChoiceField(queryset=models.HAGroup.objects.all(), required=False)
+    assigned_firewall_groups = DynamicModelMultipleChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False
+    )
     policy_rules = DynamicModelMultipleChoiceField(
         queryset=models.PolicyRule.objects.all(), required=False, query_params={"rule_type": "$rule_type"}
     )
@@ -826,23 +877,27 @@ class PolicyForm(NautobotModelForm, TenancyForm):
             "description",
             "policy_rules",
             "status",
-            "assigned_devices",
-            "assigned_dynamic_groups",
+            "assigned_firewalls",
+            "assigned_ha_groups",
+            "assigned_firewall_groups",
             "tenant_group",
             "tenant",
             "tags",
         ]
 
     def __init__(self, *args, **kwargs):
-        """Lock the rule type once the Policy exists."""
+        """Lock the rule type once the Policy exists, and combine the assignment pickers."""
         super().__init__(*args, **kwargs)
         if self.instance.present_in_database:
             self.fields["rule_type"].disabled = True
+        self.combine_grouped_fields()
 
     def clean(self):
-        """Refuse Policy Rules of another type."""
+        """Refuse Policy Rules of another type, and assignments the Policy can not take."""
         super().clean()
-        models.Policy.validate_policy_rules(self.cleaned_data.get("rule_type"), self.cleaned_data.get("policy_rules"))
+        rule_type = self.cleaned_data.get("rule_type")
+        models.Policy.validate_policy_rules(rule_type, self.cleaned_data.get("policy_rules"))
+        models.Policy.validate_assignments(rule_type, self.cleaned_data)
         return self.cleaned_data
 
 
@@ -851,8 +906,11 @@ class PolicyBulkEditForm(NautobotBulkEditForm):
 
     pk = DynamicModelMultipleChoiceField(queryset=models.Policy.objects.all(), widget=forms.MultipleHiddenInput)
     description = forms.CharField(required=False)
-    assigned_devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
-    assigned_dynamic_groups = DynamicModelMultipleChoiceField(queryset=DynamicGroup.objects.all(), required=False)
+    assigned_firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    assigned_ha_groups = DynamicModelMultipleChoiceField(queryset=models.HAGroup.objects.all(), required=False)
+    assigned_firewall_groups = DynamicModelMultipleChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False
+    )
     policy_rules = DynamicModelMultipleChoiceField(queryset=models.PolicyRule.objects.all(), required=False)
     tenant = DynamicModelChoiceField(queryset=Tenant.objects.all(), required=False)
 
@@ -1025,7 +1083,7 @@ class NATPolicyRuleBulkEditForm(PolicyRuleBulkEditForm):
 class NATPolicyFilterForm(NautobotFilterForm, TenancyFilterForm):
     """Filter form to filter searches."""
 
-    field_order = ["q", "name", "assigned_devices", "assigned_dynamic_groups"]
+    field_order = ["q", "name", "assigned_firewalls", "assigned_ha_groups", "assigned_firewall_groups"]
 
     model = models.NATPolicy
     q = forms.CharField(
@@ -1034,15 +1092,21 @@ class NATPolicyFilterForm(NautobotFilterForm, TenancyFilterForm):
         help_text="Search within Name or Description.",
     )
     name = forms.CharField(required=False, label="Name")
-    assigned_devices = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
-    assigned_dynamic_groups = DynamicModelChoiceField(queryset=DynamicGroup.objects.all(), required=False)
+    assigned_firewalls = DynamicModelChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    assigned_ha_groups = DynamicModelChoiceField(queryset=models.HAGroup.objects.all(), required=False)
+    assigned_firewall_groups = DynamicModelChoiceField(queryset=models.FirewallGroup.objects.all(), required=False)
 
 
-class NATPolicyForm(NautobotModelForm, TenancyForm):
-    """NATPolicy creation/edit form."""
+class NATPolicyForm(fields.ObjectOrGroupFormMixin, NautobotModelForm, TenancyForm):
+    """NATPolicy creation/edit form, with one picker for the Firewalls, HA Groups and Firewall Groups it is assigned to."""
 
-    assigned_devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
-    assigned_dynamic_groups = DynamicModelMultipleChoiceField(queryset=DynamicGroup.objects.all(), required=False)
+    combined_pickers = {"assigned_to": APPLIANCE_PICKER}
+
+    assigned_firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    assigned_ha_groups = DynamicModelMultipleChoiceField(queryset=models.HAGroup.objects.all(), required=False)
+    assigned_firewall_groups = DynamicModelMultipleChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False
+    )
     nat_policy_rules = DynamicModelMultipleChoiceField(queryset=models.NATPolicyRule.objects.all(), required=False)
 
     class Meta:
@@ -1054,12 +1118,24 @@ class NATPolicyForm(NautobotModelForm, TenancyForm):
             "description",
             "nat_policy_rules",
             "status",
-            "assigned_devices",
-            "assigned_dynamic_groups",
+            "assigned_firewalls",
+            "assigned_ha_groups",
+            "assigned_firewall_groups",
             "tenant_group",
             "tenant",
             "tags",
         ]
+
+    def __init__(self, *args, **kwargs):
+        """Combine the assignment pickers."""
+        super().__init__(*args, **kwargs)
+        self.combine_grouped_fields()
+
+    def clean(self):
+        """Refuse Firewalls that are in an HA Group."""
+        super().clean()
+        models.NATPolicy.validate_assignments(self.cleaned_data)
+        return self.cleaned_data
 
 
 class NATPolicyBulkEditForm(NautobotBulkEditForm):
@@ -1067,8 +1143,11 @@ class NATPolicyBulkEditForm(NautobotBulkEditForm):
 
     pk = DynamicModelMultipleChoiceField(queryset=models.NATPolicy.objects.all(), widget=forms.MultipleHiddenInput)
     description = forms.CharField(required=False)
-    assigned_devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
-    assigned_dynamic_groups = DynamicModelMultipleChoiceField(queryset=DynamicGroup.objects.all(), required=False)
+    assigned_firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    assigned_ha_groups = DynamicModelMultipleChoiceField(queryset=models.HAGroup.objects.all(), required=False)
+    assigned_firewall_groups = DynamicModelMultipleChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False
+    )
     policy_rules = DynamicModelMultipleChoiceField(queryset=models.NATPolicyRule.objects.all(), required=False)
     tenant = DynamicModelChoiceField(queryset=Tenant.objects.all(), required=False)
 
@@ -1078,3 +1157,171 @@ class NATPolicyBulkEditForm(NautobotBulkEditForm):
         nullable_fields = [
             "description",
         ]
+
+
+# Appliances
+
+
+class FirewallFilterForm(NautobotFilterForm):
+    """Filter form to filter searches."""
+
+    field_order = ["q", "name", "device", "virtual_machine", "ha_group", "firewall_groups"]
+
+    model = models.Firewall
+    q = forms.CharField(required=False, label="Search", help_text="Search within Name or Description.")
+    name = forms.CharField(required=False, label="Name")
+    device = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
+    virtual_machine = DynamicModelMultipleChoiceField(
+        queryset=VirtualMachine.objects.all(), required=False, label="Virtual Machine"
+    )
+    ha_group = DynamicModelMultipleChoiceField(queryset=models.HAGroup.objects.all(), required=False, label="HA Group")
+    firewall_groups = DynamicModelMultipleChoiceField(
+        queryset=models.FirewallGroup.objects.all(), required=False, label="Firewall Groups"
+    )
+
+
+class FirewallForm(NautobotModelForm):
+    """Firewall creation/edit form. Its HA Group is set on the HA Group's form."""
+
+    device = DynamicModelChoiceField(queryset=Device.objects.all(), required=False)
+    virtual_machine = DynamicModelChoiceField(
+        queryset=VirtualMachine.objects.all(), required=False, label="Virtual Machine"
+    )
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.Firewall
+        fields = ["name", "description", "device", "virtual_machine", "status", "tags"]
+
+
+class FirewallBulkEditForm(NautobotBulkEditForm):
+    """Firewall bulk edit form."""
+
+    pk = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), widget=forms.MultipleHiddenInput)
+    description = forms.CharField(required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        nullable_fields = ["description"]
+
+
+class HAGroupFilterForm(NautobotFilterForm):
+    """Filter form to filter searches."""
+
+    field_order = ["q", "name", "firewalls"]
+
+    model = models.HAGroup
+    q = forms.CharField(required=False, label="Search", help_text="Search within Name or Description.")
+    name = forms.CharField(required=False, label="Name")
+    firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+
+
+class HAGroupForm(NautobotModelForm):
+    """HAGroup creation/edit form, picking its two Firewalls."""
+
+    management_address = DynamicModelChoiceField(queryset=IPAddress.objects.all(), label="Management Address")
+    firewalls = DynamicModelMultipleChoiceField(
+        queryset=models.Firewall.objects.all(),
+        help_text=f"The {models.appliance.HA_GROUP_SIZE} Firewalls in the pair.",
+    )
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.HAGroup
+        fields = ["name", "description", "management_address", "firewalls", "status", "tags"]
+
+    def __init__(self, *args, **kwargs):
+        """Select the group's current Firewalls."""
+        super().__init__(*args, **kwargs)
+        if self.instance.present_in_database:
+            self.initial.setdefault("firewalls", list(self.instance.firewalls.all()))
+
+    def clean_firewalls(self):
+        """Require exactly two Firewalls that are free to join this group."""
+        firewalls = self.cleaned_data["firewalls"]
+        size = models.appliance.HA_GROUP_SIZE
+        if len(firewalls) != size:
+            raise forms.ValidationError(f"An HA Group holds exactly {size} Firewalls.")
+        problems = []
+        for firewall in firewalls:
+            if firewall.ha_group_id and firewall.ha_group_id != self.instance.pk:
+                problems.append(f"{firewall} is already in the HA Group {firewall.ha_group}")
+            elif not firewall.ha_group_id and (uses := firewall.direct_uses()):
+                problems.append(f"{firewall} is used directly, so replace it with this HA Group first ({uses})")
+        if problems:
+            raise forms.ValidationError("; ".join(problems) + ".")
+        return firewalls
+
+    def _save_m2m(self):
+        """Set each chosen Firewall's HA Group, and release the Firewalls no longer chosen."""
+        super()._save_m2m()
+        chosen = [i.pk for i in self.cleaned_data["firewalls"]]
+        models.Firewall.objects.filter(ha_group=self.instance).exclude(pk__in=chosen).update(ha_group=None)
+        models.Firewall.objects.filter(pk__in=chosen).update(ha_group=self.instance)
+
+
+class HAGroupBulkEditForm(NautobotBulkEditForm):
+    """HAGroup bulk edit form."""
+
+    pk = DynamicModelMultipleChoiceField(queryset=models.HAGroup.objects.all(), widget=forms.MultipleHiddenInput)
+    description = forms.CharField(required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        nullable_fields = ["description"]
+
+
+class FirewallGroupFilterForm(NautobotFilterForm):
+    """Filter form to filter searches."""
+
+    field_order = ["q", "name", "firewalls", "ha_groups"]
+
+    model = models.FirewallGroup
+    q = forms.CharField(required=False, label="Search", help_text="Search within Name or Description.")
+    name = forms.CharField(required=False, label="Name")
+    firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    ha_groups = DynamicModelMultipleChoiceField(
+        queryset=models.HAGroup.objects.all(), required=False, label="HA Groups"
+    )
+
+
+class FirewallGroupForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
+    """FirewallGroup creation/edit form, with one picker for its Firewalls and HA Groups."""
+
+    firewalls = DynamicModelMultipleChoiceField(queryset=models.Firewall.objects.all(), required=False)
+    ha_groups = DynamicModelMultipleChoiceField(
+        queryset=models.HAGroup.objects.all(), required=False, label="HA Groups"
+    )
+
+    class Meta:
+        """Meta attributes."""
+
+        model = models.FirewallGroup
+        fields = ["name", "description", "firewalls", "ha_groups", "status", "tags"]
+
+    def __init__(self, *args, **kwargs):
+        """Show one picker for Firewalls and HA Groups."""
+        super().__init__(*args, **kwargs)
+        self.combine_grouped_fields()
+
+    def clean(self):
+        """Refuse Firewalls that are in an HA Group."""
+        super().clean()
+        models.FirewallGroup.validate_members(self.cleaned_data.get("firewalls"))
+        return self.cleaned_data
+
+
+class FirewallGroupBulkEditForm(NautobotBulkEditForm):
+    """FirewallGroup bulk edit form."""
+
+    pk = DynamicModelMultipleChoiceField(queryset=models.FirewallGroup.objects.all(), widget=forms.MultipleHiddenInput)
+    description = forms.CharField(required=False)
+
+    class Meta:
+        """Meta attributes."""
+
+        nullable_fields = ["description"]

@@ -2,11 +2,7 @@
 
 from django.http import Http404
 from drf_spectacular.utils import extend_schema
-from nautobot.apps.api import ModelViewSet, NautobotModelViewSet
-from nautobot.dcim.filters import DeviceFilterSet
-from nautobot.dcim.models import Device
-from nautobot.virtualization.filters import VirtualMachineFilterSet
-from nautobot.virtualization.models import VirtualMachine
+from nautobot.apps.api import NautobotModelViewSet
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -103,6 +99,30 @@ class ZoneGroupViewSet(NautobotModelViewSet):
     filterset_class = filters.ZoneGroupFilterSet
 
 
+class FirewallViewSet(NautobotModelViewSet):
+    """Firewall viewset."""
+
+    queryset = models.Firewall.objects.all().select_related("device", "virtual_machine", "ha_group")
+    serializer_class = serializers.FirewallSerializer
+    filterset_class = filters.FirewallFilterSet
+
+
+class HAGroupViewSet(NautobotModelViewSet):
+    """HAGroup viewset."""
+
+    queryset = models.HAGroup.objects.all().select_related("management_address")
+    serializer_class = serializers.HAGroupSerializer
+    filterset_class = filters.HAGroupFilterSet
+
+
+class FirewallGroupViewSet(NautobotModelViewSet):
+    """FirewallGroup viewset."""
+
+    queryset = models.FirewallGroup.objects.all()
+    serializer_class = serializers.FirewallGroupSerializer
+    filterset_class = filters.FirewallGroupFilterSet
+
+
 class PolicyBandViewSet(NautobotModelViewSet):
     """PolicyBand viewset."""
 
@@ -148,38 +168,6 @@ class NATPolicyViewSet(NautobotModelViewSet):
 ###########################
 
 
-class PolicyDeviceM2MViewSet(ModelViewSet):
-    """PolicyDeviceM2M viewset."""
-
-    queryset = models.PolicyDeviceM2M.objects.all()
-    serializer_class = serializers.PolicyDeviceM2MSerializer
-    filterset_class = filters.PolicyDeviceM2MFilterSet
-
-
-class PolicyDynamicGroupM2MViewSet(ModelViewSet):
-    """PolicyDynamicGroupM2M viewset."""
-
-    queryset = models.PolicyDynamicGroupM2M.objects.all()
-    serializer_class = serializers.PolicyDynamicGroupM2MSerializer
-    filterset_class = filters.PolicyDynamicGroupM2MFilterSet
-
-
-class NATPolicyDeviceM2MViewSet(ModelViewSet):
-    """NATPolicyDeviceM2M viewset."""
-
-    queryset = models.NATPolicyDeviceM2M.objects.all()
-    serializer_class = serializers.NATPolicyDeviceM2MSerializer
-    filterset_class = filters.NATPolicyDeviceM2MFilterSet
-
-
-class NATPolicyDynamicGroupM2MViewSet(ModelViewSet):
-    """NATPolicyDynamicGroupM2M viewset."""
-
-    queryset = models.NATPolicyDynamicGroupM2M.objects.all()
-    serializer_class = serializers.NATPolicyDynamicGroupM2MSerializer
-    filterset_class = filters.NATPolicyDynamicGroupM2MFilterSet
-
-
 class GroupedObjectsView(APIView):
     """Search two related models together, for the combined pickers on the rule, group and Zone forms.
 
@@ -188,7 +176,8 @@ class GroupedObjectsView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
-    # Kind, mapped to the (value prefix, model, filterset) sources it searches, in the order they are listed.
+    # Kind, mapped to the (value prefix, model, filterset[, queryset filter]) sources it searches, in the order they are
+    # listed.
     KINDS = {
         "zones": (
             ("group", models.ZoneGroup, filters.ZoneGroupFilterSet),
@@ -210,10 +199,16 @@ class GroupedObjectsView(APIView):
             ("group", models.ApplicationObjectGroup, filters.ApplicationObjectGroupFilterSet),
             ("object", models.ApplicationObject, filters.ApplicationObjectFilterSet),
         ),
-        # A Zone's Devices and Virtual Machines: the picker's "group" values are Virtual Machines.
-        "devices": (
-            ("object", Device, DeviceFilterSet),
-            ("group", VirtualMachine, VirtualMachineFilterSet),
+        # Firewall Group members. A Firewall in an HA Group is chosen through its HA Group, so it is left out.
+        "firewalls": (
+            ("group", models.HAGroup, filters.HAGroupFilterSet),
+            ("object", models.Firewall, filters.FirewallFilterSet, {"ha_group__isnull": True}),
+        ),
+        # What Policies, NAT Policies and Zones are assigned to.
+        "appliances": (
+            ("firewall", models.Firewall, filters.FirewallFilterSet, {"ha_group__isnull": True}),
+            ("hagroup", models.HAGroup, filters.HAGroupFilterSet),
+            ("firewallgroup", models.FirewallGroup, filters.FirewallGroupFilterSet),
         ),
     }
     MAX_LIMIT = 1000
@@ -247,8 +242,8 @@ class GroupedObjectsView(APIView):
         search = request.query_params.get("q")
 
         sources = []
-        for prefix, model, filterset in self.KINDS[kind]:
-            queryset = model.objects.restrict(request.user, "view")
+        for prefix, model, filterset, *narrow in self.KINDS[kind]:
+            queryset = model.objects.restrict(request.user, "view").filter(**(narrow[0] if narrow else {}))
             if search:
                 queryset = filterset({"q": search}, queryset).qs
             sources.append((prefix, model, queryset, queryset.count()))

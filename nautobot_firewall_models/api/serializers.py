@@ -1,7 +1,7 @@
 """API serializers for nautobot_firewall_models."""
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from nautobot.apps.api import NautobotModelSerializer, TaggedModelSerializerMixin, ValidatedModelSerializer
+from nautobot.apps.api import NautobotModelSerializer, TaggedModelSerializerMixin
 from rest_framework import serializers
 
 from nautobot_firewall_models import models
@@ -147,6 +147,11 @@ class ZoneSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         model = models.Zone
         fields = "__all__"
 
+    def validate(self, attrs):
+        """Refuse Firewalls that are in an HA Group."""
+        run_model_check(models.Zone.validate_bindings, attrs.get("firewalls"))
+        return super().validate(attrs)
+
 
 class ZoneGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """ZoneGroup Serializer."""
@@ -201,6 +206,8 @@ class RenderedAddressObjectGroupSerializer(serializers.ModelSerializer):
 class PolicyBandSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
     """PolicyBand Serializer."""
 
+    missing_final_rule = serializers.BooleanField(read_only=True)
+
     class Meta:
         """Meta attributes."""
 
@@ -253,9 +260,10 @@ class PolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         fields = "__all__"
 
     def validate(self, attrs):
-        """Refuse Policy Rules of another type."""
+        """Refuse Policy Rules of another type, and assignments a Policy can not take."""
         rule_type = self.instance.rule_type if self.instance else attrs.get("rule_type")
         run_model_check(models.Policy.validate_policy_rules, rule_type, attrs.get("policy_rules"))
+        run_model_check(models.Policy.validate_assignments, rule_type, attrs)
         return super().validate(attrs)
 
 
@@ -286,47 +294,51 @@ class NATPolicySerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
         model = models.NATPolicy
         fields = "__all__"
 
-
-###########################
-# Through Models
-###########################
-
-
-class PolicyDeviceM2MSerializer(ValidatedModelSerializer):
-    """PolicyDeviceM2M Serializer."""
-
-    class Meta:
-        """Meta attributes."""
-
-        model = models.PolicyDeviceM2M
-        fields = "__all__"
+    def validate(self, attrs):
+        """Refuse Firewalls that are in an HA Group."""
+        run_model_check(models.NATPolicy.validate_assignments, attrs)
+        return super().validate(attrs)
 
 
-class PolicyDynamicGroupM2MSerializer(ValidatedModelSerializer):
-    """PolicyDynamicGroupM2M Serializer."""
+class ApplianceSerializer(serializers.Serializer):  # pylint: disable=abstract-method
+    """Read-only reference to a Firewall, HA Group or Firewall Group."""
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class FirewallSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+    """Firewall Serializer. A Firewall joins an HA Group through its `ha_group` field."""
 
     class Meta:
         """Meta attributes."""
 
-        model = models.PolicyDynamicGroupM2M
+        model = models.Firewall
         fields = "__all__"
 
 
-class NATPolicyDeviceM2MSerializer(ValidatedModelSerializer):
-    """NATPolicyDeviceM2M Serializer."""
+class HAGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+    """HAGroup Serializer. Its Firewalls are set on each Firewall's `ha_group` field."""
+
+    firewalls = ApplianceSerializer(many=True, read_only=True)
 
     class Meta:
         """Meta attributes."""
 
-        model = models.NATPolicyDeviceM2M
+        model = models.HAGroup
         fields = "__all__"
 
 
-class NATPolicyDynamicGroupM2MSerializer(ValidatedModelSerializer):
-    """NATPolicyDynamicGroupM2M Serializer."""
+class FirewallGroupSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
+    """FirewallGroup Serializer."""
 
     class Meta:
         """Meta attributes."""
 
-        model = models.NATPolicyDynamicGroupM2M
+        model = models.FirewallGroup
         fields = "__all__"
+
+    def validate(self, attrs):
+        """Refuse Firewalls that are in an HA Group."""
+        run_model_check(models.FirewallGroup.validate_members, attrs.get("firewalls"))
+        return super().validate(attrs)

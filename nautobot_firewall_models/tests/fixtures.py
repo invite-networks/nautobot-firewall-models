@@ -3,7 +3,7 @@
 # ruff: noqa: F403, F405
 from django.contrib.contenttypes.models import ContentType
 from nautobot.dcim.models import Device, DeviceType, Location, LocationType, Manufacturer, Platform
-from nautobot.extras.models import DynamicGroup, Role
+from nautobot.extras.models import Role
 from nautobot.extras.models.statuses import Status
 from nautobot.ipam.models import VRF, Namespace, Prefix
 from nautobot.ipam.models import IPAddress as IPAddr
@@ -424,28 +424,42 @@ def assign_policies():  # pylint: disable=too-many-locals
         status=status,
         platform=palo_platform,
     )
-    dynamic_group, _ = DynamicGroup.objects.get_or_create(
-        name="North Texas", content_type=ContentType.objects.get_for_model(Device)
-    )
-    dynamic_group.filter = {"location": ["DFW02"]}
-    dynamic_group.validated_save()
-    PolicyDeviceM2M.objects.get_or_create(policy=pol1, device=dev1, weight=150)
-    PolicyDeviceM2M.objects.get_or_create(policy=pol2, device=dev1, weight=200)
-    PolicyDeviceM2M.objects.get_or_create(policy=pol1, device=dev2)
-    PolicyDynamicGroupM2M.objects.get_or_create(policy=pol3, dynamic_group=dynamic_group, weight=1000)
-    NATPolicyDeviceM2M.objects.get_or_create(nat_policy=nat_policy_1, device=dev1, weight=150)
-    NATPolicyDeviceM2M.objects.get_or_create(nat_policy=nat_policy_2, device=dev1, weight=200)
-    NATPolicyDeviceM2M.objects.get_or_create(nat_policy=nat_policy_1, device=dev2)
-    NATPolicyDynamicGroupM2M.objects.get_or_create(nat_policy=nat_policy_3, dynamic_group=dynamic_group, weight=1000)
+    dev3 = Device.objects.get(name="DFW02-WAN01")
+    fw1, _ = Firewall.objects.get_or_create(name="DFW02-FW00", device=dev1, status=status)
+    fw3, _ = Firewall.objects.get_or_create(name="DFW02-FW01", device=dev3, status=status)
+    fw2, _ = Firewall.objects.get_or_create(name="HOU02-FW00", device=dev2, status=status)
+    # The Firewalls at the DFW02 site, standing in for the Dynamic Group the policies used to be assigned to.
+    north_texas, _ = FirewallGroup.objects.get_or_create(name="North Texas", status=status)
+    north_texas.firewalls.set([fw1, fw3])
+    pol1.assigned_firewalls.set([fw1, fw2])
+    pol2.assigned_firewalls.set([fw1])
+    pol3.assigned_firewall_groups.set([north_texas])
+    nat_policy_1.assigned_firewalls.set([fw1, fw2])
+    nat_policy_2.assigned_firewalls.set([fw1])
+    nat_policy_3.assigned_firewall_groups.set([north_texas])
+    return fw1, fw2, fw3
 
 
-def bind_zone_devices():
-    """Bind WAN to two firewalls and LAN to one, leaving DMZ unbound."""
-    assign_policies()
+def bind_zone_firewalls():
+    """Bind WAN to two Firewalls and LAN to one, leaving DMZ unbound."""
+    fw1, fw2, _ = assign_policies()
     zone1, zone2, _ = create_zone()
-    zone1.devices.set(Device.objects.filter(name__in=["DFW02-WAN00", "HOU02-WAN00"]))
-    zone2.devices.set(Device.objects.filter(name="DFW02-WAN00"))
+    zone1.firewalls.set([fw1, fw2])
+    zone2.firewalls.set([fw1])
     return zone1, zone2
+
+
+def create_ha_group(name="DFW02-HA", address="10.0.0.50"):
+    """Creates an HA Group with two new Firewalls on Virtual Machines, sharing a management address."""
+    status = Status.objects.get(name="Active")
+    namespace, _ = Namespace.objects.get_or_create(name="global")
+    Prefix.objects.get_or_create(network="10.0.0.0", prefix_length=24, namespace=namespace, status=status)
+    management, _ = IPAddr.objects.get_or_create(address=f"{address}/24", namespace=namespace, status=status)
+    group, _ = HAGroup.objects.get_or_create(name=name, management_address=management, status=status)
+    for side in ("a", "b"):
+        vm = create_virtual_machine(f"{name}-{side}-vm")
+        Firewall.objects.get_or_create(name=f"{name}-{side}", virtual_machine=vm, ha_group=group, status=status)
+    return group
 
 
 def create_sample_env():

@@ -146,6 +146,30 @@ menu_items = (
                     ),
                 ],
             ),
+            NavMenuGroup(
+                name="Appliances",
+                weight=700,
+                items=[
+                    NavMenuItem(
+                        link="plugins:nautobot_firewall_models:firewall_list",
+                        name="Firewalls",
+                        weight=100,
+                        permissions=["nautobot_firewall_models.view_firewall"],
+                    ),
+                    NavMenuItem(
+                        link="plugins:nautobot_firewall_models:hagroup_list",
+                        name="HA Groups",
+                        weight=200,
+                        permissions=["nautobot_firewall_models.view_hagroup"],
+                    ),
+                    NavMenuItem(
+                        link="plugins:nautobot_firewall_models:firewallgroup_list",
+                        name="Firewall Groups",
+                        weight=300,
+                        permissions=["nautobot_firewall_models.view_firewallgroup"],
+                    ),
+                ],
+            ),
         ],
     ),
 )

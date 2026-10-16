@@ -56,6 +56,14 @@ class AddressObjectGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     }
 
 
+class MissingFinalRulePanel(ui.Panel):
+    """Warn on a Trust Band's page when the band has no Final rule. The check is reported, never enforced."""
+
+    def should_render(self, context):
+        """Only render for a Trust Band that is missing its Final rule."""
+        return super().should_render(context) and context["object"].missing_final_rule
+
+
 class ServiceObjectGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     """Set `key_and_reverse_url_string` for ServiceObjectGroup."""
 
@@ -68,12 +76,44 @@ class FQDNFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     key_and_reverse_url_string = {"ip_addresses": "ipam:ipaddress_list"}
 
 
+ASSIGNED_TO_LABELS = {
+    "assigned_firewalls__all": "Firewalls",
+    "assigned_ha_groups__all": "HA Groups",
+    "assigned_firewall_groups__all": "Firewall Groups",
+}
+
+
+class FirewallFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
+    """Set `key_and_reverse_url_string` for Firewall."""
+
+    key_and_reverse_url_string = {"firewall_groups": "plugins:nautobot_firewall_models:firewallgroup_list"}
+
+
+class HAGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
+    """Set `key_and_reverse_url_string` for HAGroup."""
+
+    key_and_reverse_url_string = {
+        "firewalls": "plugins:nautobot_firewall_models:firewall_list",
+        "firewall_groups": "plugins:nautobot_firewall_models:firewallgroup_list",
+    }
+
+
+class FirewallGroupFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
+    """Set `key_and_reverse_url_string` for FirewallGroup."""
+
+    key_and_reverse_url_string = {
+        "firewalls": "plugins:nautobot_firewall_models:firewall_list",
+        "ha_groups": "plugins:nautobot_firewall_models:hagroup_list",
+    }
+
+
 class NATPolicyFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     """Set `key_and_reverse_url_string` for NATPolicy."""
 
     key_and_reverse_url_string = {
-        "assigned_devices__all": "dcim:device_list",
-        "assigned_dynamic_groups__all": "extras:dynamicgroup_list",
+        "assigned_firewalls__all": "plugins:nautobot_firewall_models:firewall_list",
+        "assigned_ha_groups__all": "plugins:nautobot_firewall_models:hagroup_list",
+        "assigned_firewall_groups__all": "plugins:nautobot_firewall_models:firewallgroup_list",
     }
 
 
@@ -87,8 +127,9 @@ class PolicyFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
     """Set `key_and_reverse_url_string` for Policy."""
 
     key_and_reverse_url_string = {
-        "assigned_devices__all": "dcim:device_list",
-        "assigned_dynamic_groups__all": "extras:dynamicgroup_list",
+        "assigned_firewalls__all": "plugins:nautobot_firewall_models:firewall_list",
+        "assigned_ha_groups__all": "plugins:nautobot_firewall_models:hagroup_list",
+        "assigned_firewall_groups__all": "plugins:nautobot_firewall_models:firewallgroup_list",
     }
 
 
@@ -109,8 +150,9 @@ class ZoneFieldsPanel(BaseFieldsPanelMixin, ui.ObjectFieldsPanel):
 
     key_and_reverse_url_string = {
         "vrfs": "ipam:vrf_list",
-        "devices": "dcim:device_list",
-        "virtual_machines": "virtualization:virtualmachine_list",
+        "firewalls": "plugins:nautobot_firewall_models:firewall_list",
+        "ha_groups": "plugins:nautobot_firewall_models:hagroup_list",
+        "firewall_groups": "plugins:nautobot_firewall_models:firewallgroup_list",
     }
 
 
@@ -201,16 +243,16 @@ nat_policy = ui.ObjectDetailContent(
         NATPolicyFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            # Replace with `__all__` once order is fixed, needs additional_fields=["assigned_devices__all", "assigned_dynamic_groups__all"]
             fields=[
                 "name",
                 "description",
-                "assigned_devices__all",
-                "assigned_dynamic_groups__all",
+                "assigned_firewalls__all",
+                "assigned_ha_groups__all",
+                "assigned_firewall_groups__all",
                 "tenant",
                 "status",
             ],
-            key_transforms={"assigned_devices__all": "Devices", "assigned_dynamic_groups__all": "Dynamic Groups"},
+            key_transforms=ASSIGNED_TO_LABELS,
         ),
     ),
     extra_tabs=(
@@ -223,30 +265,6 @@ nat_policy = ui.ObjectDetailContent(
                     section=ui.SectionChoices.FULL_WIDTH,
                     weight=100,
                     template_path="nautobot_firewall_models/inc/nat_policy_expanded_rules.html",
-                ),
-            ),
-        ),
-        ui.Tab(
-            weight=ui.Tab.WEIGHT_CHANGELOG_TAB + 200,
-            tab_id="edit-device-weight",
-            label="Edit Device Weight",
-            panels=(
-                ui.Panel(
-                    section=ui.SectionChoices.FULL_WIDTH,
-                    weight=100,
-                    template_path="nautobot_firewall_models/inc/nat_policy_device_weight.html",
-                ),
-            ),
-        ),
-        ui.Tab(
-            weight=ui.Tab.WEIGHT_CHANGELOG_TAB + 200,
-            tab_id="edit-dynamic-group-weight",
-            label="Edit Dynamic Group Weight",
-            panels=(
-                ui.Panel(
-                    section=ui.SectionChoices.FULL_WIDTH,
-                    weight=100,
-                    template_path="nautobot_firewall_models/inc/nat_policy_dynamic_group_weight.html",
                 ),
             ),
         ),
@@ -275,17 +293,17 @@ policy = ui.ObjectDetailContent(
         PolicyFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            # Replace with `__all__` once order is fixed, needs additional_fields=["assigned_devices__all", "assigned_dynamic_groups__all"]
             fields=[
                 "name",
                 "rule_type",
                 "description",
-                "assigned_devices__all",
-                "assigned_dynamic_groups__all",
+                "assigned_firewalls__all",
+                "assigned_ha_groups__all",
+                "assigned_firewall_groups__all",
                 "tenant",
                 "status",
             ],
-            key_transforms={"assigned_devices__all": "Devices", "assigned_dynamic_groups__all": "Dynamic Groups"},
+            key_transforms=ASSIGNED_TO_LABELS,
         ),
     ),
     extra_tabs=(
@@ -301,39 +319,21 @@ policy = ui.ObjectDetailContent(
                 ),
             ),
         ),
-        ui.Tab(
-            weight=ui.Tab.WEIGHT_CHANGELOG_TAB + 200,
-            tab_id="edit-device-weight",
-            label="Edit Device Weight",
-            panels=(
-                ui.Panel(
-                    section=ui.SectionChoices.FULL_WIDTH,
-                    weight=100,
-                    template_path="nautobot_firewall_models/inc/policy_device_weight.html",
-                ),
-            ),
-        ),
-        ui.Tab(
-            weight=ui.Tab.WEIGHT_CHANGELOG_TAB + 200,
-            tab_id="edit-dynamic-group-weight",
-            label="Edit Dynamic Group Weight",
-            panels=(
-                ui.Panel(
-                    section=ui.SectionChoices.FULL_WIDTH,
-                    weight=100,
-                    template_path="nautobot_firewall_models/inc/policy_dynamic_group_weight.html",
-                ),
-            ),
-        ),
     ),
 )
 
 policy_band = ui.ObjectDetailContent(
     panels=(
+        MissingFinalRulePanel(
+            section=ui.SectionChoices.FULL_WIDTH,
+            weight=50,
+            label="Trust Band check",
+            template_path="nautobot_firewall_models/inc/policy_band_missing_final_rule.html",
+        ),
         ui.ObjectFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            fields=["name", "index", "description"],
+            fields=["name", "index", "trust_band", "description"],
         ),
         ui.ObjectsTablePanel(
             weight=100,
@@ -422,7 +422,7 @@ zone = ui.ObjectDetailContent(
         ZoneFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            fields=["name", "zone_group", "description", "vrfs", "devices", "virtual_machines", "status"],
+            fields=["name", "zone_group", "description", "vrfs", "firewalls", "ha_groups", "firewall_groups", "status"],
         ),
     ),
 )
@@ -442,5 +442,47 @@ zone_group = ui.ObjectDetailContent(
             related_field_name="zone_group",
             exclude_columns=["zone_group"],
         ),
+    ),
+)
+
+# Shown on a Firewall, HA Group or Firewall Group: the Policies and NAT Policies that reach it.
+assigned_policies_panel = ui.Panel(
+    section=ui.SectionChoices.RIGHT_HALF,
+    weight=100,
+    label="Assigned Policies",
+    template_path="nautobot_firewall_models/inc/appliance_policies.html",
+)
+
+firewall = ui.ObjectDetailContent(
+    panels=(
+        FirewallFieldsPanel(
+            section=ui.SectionChoices.LEFT_HALF,
+            weight=100,
+            fields=["name", "description", "device", "virtual_machine", "ha_group", "firewall_groups", "status"],
+        ),
+        assigned_policies_panel,
+    ),
+)
+
+ha_group = ui.ObjectDetailContent(
+    panels=(
+        HAGroupFieldsPanel(
+            section=ui.SectionChoices.LEFT_HALF,
+            weight=100,
+            fields=["name", "description", "management_address", "firewalls", "firewall_groups", "status"],
+        ),
+        assigned_policies_panel,
+    ),
+)
+
+firewall_group = ui.ObjectDetailContent(
+    panels=(
+        FirewallGroupFieldsPanel(
+            section=ui.SectionChoices.LEFT_HALF,
+            weight=100,
+            fields=["name", "description", "firewalls", "ha_groups", "status"],
+            key_transforms={"ha_groups": "HA Groups"},
+        ),
+        assigned_policies_panel,
     ),
 )

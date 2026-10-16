@@ -9,7 +9,8 @@ Zones are common on firewalls and are typically seen as representations of area 
 * Zone Group (FK to ZoneGroup, required)
     * The one Zone Group the Zone belongs to.
 * VRFs (M2M to VRF)
-* Devices (M2M to Device)
-* Virtual Machines (M2M to VirtualMachine)
-    * The Devices and Virtual Machines the Zone is bound to. The form picks both in one searchable field.
+* Firewalls (M2M to Firewall)
+* HA Groups (M2M to HAGroup)
+* Firewall Groups (M2M to FirewallGroup)
+    * What the Zone is bound to, picked in one Bound To field. A Firewall that is in an HA Group is bound through its HA Group.
 * Status (FK to Status)

@@ -4,11 +4,12 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
-from nautobot.core.models.generics import BaseModel, PrimaryModel
+from nautobot.core.models.generics import PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models.models.address import host_relative_names
+from nautobot_firewall_models.models.appliance import refuse_ha_members
 from nautobot_firewall_models.models.zone import expand_zones
 from nautobot_firewall_models.utils import get_default_status, model_to_json
 
@@ -318,7 +319,7 @@ class NATPolicy(PrimaryModel):
     """
     The overarching model that is the full NAT policy with all underlying rules and child objects.
 
-    Each NATPolicy can be assigned to both devices and to dynamic groups which in turn can assign the policy to a related device.
+    A NAT Policy is assigned to Firewalls, HA Groups and Firewall Groups.
     """
 
     description = models.CharField(
@@ -332,19 +333,23 @@ class NATPolicy(PrimaryModel):
         related_name="nat_policies",
         verbose_name="NAT Policy Rules",
     )
-    assigned_devices = models.ManyToManyField(
-        to="dcim.Device",
-        through="NATPolicyDeviceM2M",
+    assigned_firewalls = models.ManyToManyField(
+        to="nautobot_firewall_models.Firewall",
         related_name="nat_policies",
         blank=True,
-        verbose_name="Assigned Devices",
+        verbose_name="Assigned Firewalls",
     )
-    assigned_dynamic_groups = models.ManyToManyField(
-        to="extras.DynamicGroup",
-        through="NATPolicyDynamicGroupM2M",
+    assigned_ha_groups = models.ManyToManyField(
+        to="nautobot_firewall_models.HAGroup",
         related_name="nat_policies",
         blank=True,
-        verbose_name="Assigned Dynamic Groups",
+        verbose_name="Assigned HA Groups",
+    )
+    assigned_firewall_groups = models.ManyToManyField(
+        to="nautobot_firewall_models.FirewallGroup",
+        related_name="nat_policies",
+        blank=True,
+        verbose_name="Assigned Firewall Groups",
     )
     status = StatusField(
         on_delete=models.PROTECT,
@@ -366,6 +371,12 @@ class NATPolicy(PrimaryModel):
         verbose_name = "NAT Policy"
         verbose_name_plural = "NAT Policies"
 
+    @staticmethod
+    def validate_assignments(assignments):
+        """Refuse Firewalls that are in an HA Group; the HA Group is assigned instead."""
+        if errors := refuse_ha_members("assigned_firewalls", assignments.get("assigned_firewalls")):
+            raise ValidationError(errors)
+
     @property
     def policy_details(self):
         """Convenience method to convert to a Python list of dictionaries."""
@@ -378,44 +389,3 @@ class NATPolicy(PrimaryModel):
     def __str__(self):
         """Stringify instance."""
         return self.name
-
-
-###########################
-# Through Models
-###########################
-
-
-class NATPolicyDeviceM2M(BaseModel):
-    """Through model to add weight to the NATPolicy & Device relationship."""
-
-    nat_policy = models.ForeignKey("nautobot_firewall_models.NATPolicy", on_delete=models.CASCADE)
-    device = models.ForeignKey("dcim.Device", on_delete=models.PROTECT)
-    weight = models.PositiveSmallIntegerField(default=100)
-
-    class Meta:
-        """Meta class."""
-
-        ordering = ["weight"]
-        unique_together = ["nat_policy", "device"]
-
-    def __str__(self):
-        """Stringify instance."""
-        return f"{self.nat_policy.name} - {self.device.name} - {self.weight}"
-
-
-class NATPolicyDynamicGroupM2M(BaseModel):
-    """Through model to add weight to the NATPolicy & DynamicGroup relationship."""
-
-    nat_policy = models.ForeignKey("nautobot_firewall_models.NATPolicy", on_delete=models.CASCADE)
-    dynamic_group = models.ForeignKey("extras.DynamicGroup", on_delete=models.PROTECT, verbose_name="Dynamic Group")
-    weight = models.PositiveSmallIntegerField(default=100)
-
-    class Meta:
-        """Meta class."""
-
-        ordering = ["weight"]
-        unique_together = ["nat_policy", "dynamic_group"]
-
-    def __str__(self):
-        """Stringify instance."""
-        return f"{self.nat_policy.name} - {self.dynamic_group.name} - {self.weight}"

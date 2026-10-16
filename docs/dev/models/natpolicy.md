@@ -1,15 +1,15 @@
 # NATPolicy
 
-A `NATPolicy` models a set of network address translation (NAT) rules. NAT Policies are assigned to Devices and Dynamic Groups.
+A `NATPolicy` models a set of network address translation (NAT) rules. NAT Policies are assigned to Firewalls, HA Groups and Firewall Groups.
 
 ## Attributes
 
 * Name (string)
 * Description (optional, string)
 * NAT Policy Rules (M2M to NATPolicyRule via NATPolicyRuleM2M)
-* Assigned Devices (M2M to Device via NATPolicyDeviceM2M)
-    * Assigns a `NATPolicy` to a Device
-* Assigned Dynamic Groups (M2M to DynamicGroup via NATPolicyDynamicGroupM2M)
-    * Assigns a Policy to a `[DynamicGroup]`(https://docs.nautobot.com/projects/core/en/stable/models/extras/dynamicgroup/) which can then be used to dynamically assign to a Device/VirtualMachine or set of Devices/VirtualMachines
+* Assigned Firewalls (M2M to Firewall)
+* Assigned HA Groups (M2M to HAGroup)
+* Assigned Firewall Groups (M2M to FirewallGroup)
+    * The Firewalls, HA Groups and Firewall Groups the NAT Policy is assigned to, picked in one Assigned To field. A Firewall that is in an HA Group is assigned through its HA Group.
 * Status (FK to `Status`)
 * Tags (M2M to `Tag`)

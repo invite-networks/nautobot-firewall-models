@@ -1,9 +1,6 @@
 """NAT Rule Object Viewsets."""
 
-from django.shortcuts import redirect
-from django.urls import reverse
 from nautobot.apps.views import NautobotUIViewSet
-from rest_framework.decorators import action
 
 from nautobot_firewall_models import details, filters, forms, models, tables
 from nautobot_firewall_models.api import serializers
@@ -61,48 +58,3 @@ class NATPolicyUIViewSet(NautobotUIViewSet):
     ]
 
     lookup_field = "pk"
-
-    def get_extra_context(self, request, instance=None):
-        """Add extra permissions for edit-device-weight and edit-dynamicgroup-weight tabs."""
-        context = super().get_extra_context(request, instance)
-        context["device_weight_tab_perms"] = ["dcim.change_device", "nautobot_firewall_models.change_natpolicy"]
-        context["dynamicgroup_weight_tab_perms"] = [
-            "extras.change_dynamicgroup",
-            "nautobot_firewall_models.change_natpolicy",
-        ]
-
-        return context
-
-    @action(
-        detail=True,
-        methods=["post"],
-        custom_view_base_action="change",
-        custom_view_additional_permissions=["dcim.change_device"],
-    )
-    def devices(self, request, pk, *args, **kwargs):
-        # pylint: disable=invalid-name, arguments-differ
-        """Method to set weight on a Device & NATPolicy Relationship."""
-        form_data = dict(request.POST)
-        form_data.pop("csrfmiddlewaretoken", None)
-        for device, weight in form_data.items():
-            m2m = models.NATPolicyDeviceM2M.objects.get(device=device, nat_policy=pk)
-            m2m.weight = weight[0]
-            m2m.validated_save()
-        return redirect(reverse("plugins:nautobot_firewall_models:natpolicy", kwargs={"pk": pk}))
-
-    @action(
-        detail=True,
-        methods=["post"],
-        custom_view_base_action="change",
-        custom_view_additional_permissions=["extras.change_dynamicgroup"],
-    )
-    def dynamic_groups(self, request, pk, *args, **kwargs):
-        # pylint: disable=invalid-name, arguments-differ
-        """Method to set weight on a DynamicGroup & Policy Relationship."""
-        form_data = dict(request.POST)
-        form_data.pop("csrfmiddlewaretoken", None)
-        for group, weight in form_data.items():
-            m2m = models.NATPolicyDynamicGroupM2M.objects.get(dynamic_group=group, nat_policy=pk)
-            m2m.weight = weight[0]
-            m2m.validated_save()
-        return redirect(reverse("plugins:nautobot_firewall_models:natpolicy", kwargs={"pk": pk}))

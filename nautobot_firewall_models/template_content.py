@@ -1,51 +1,31 @@
 """Extensions of baseline Nautobot views."""
 
+from django.core.exceptions import ObjectDoesNotExist
 from nautobot.apps.ui import TemplateExtension
 
 
-class DevicePolicies(TemplateExtension):  # pylint: disable=abstract-method
-    """Add Policy to the right side of the Device page."""
+class HostFirewall(TemplateExtension):  # pylint: disable=abstract-method
+    """Show the Firewall a Device or Virtual Machine is bound to, with a link to its Policy Rules."""
+
+    def right_page(self):
+        """Add the Firewall card to the right side of the detail view."""
+        try:
+            firewall = self.context["object"].firewall
+        except ObjectDoesNotExist:
+            firewall = None
+        return self.render("nautobot_firewall_models/inc/host_firewall.html", extra_context={"firewall": firewall})
+
+
+class DeviceFirewall(HostFirewall):  # pylint: disable=abstract-method
+    """Show a Device's Firewall."""
 
     model = "dcim.device"
 
-    def right_page(self):
-        """Add content to the right side of the Devices detail view."""
-        return self.render(
-            "nautobot_firewall_models/inc/device_policies.html",
-            extra_context={
-                "policies": self.context["object"].policydevicem2m_set.all(),
-                "nat_policies": self.context["object"].natpolicydevicem2m_set.all(),
-            },
-        )
+
+class VirtualMachineFirewall(HostFirewall):  # pylint: disable=abstract-method
+    """Show a Virtual Machine's Firewall."""
+
+    model = "virtualization.virtualmachine"
 
 
-class DynamicGroupDevicePolicies(TemplateExtension):  # pylint: disable=abstract-method
-    """Add Policy to the right side of the Device page."""
-
-    model = "dcim.device"
-
-    def right_page(self):
-        """Add content to the right side of the Devices detail view."""
-        return self.render(
-            "nautobot_firewall_models/inc/dynamic_group_device_policies.html",
-            extra_context={"dynamic_groups": self.context["object"].dynamic_groups.all()},
-        )
-
-
-class DynamicGroupPolicies(TemplateExtension):  # pylint: disable=abstract-method
-    """Add Policy to the right side of the Device page."""
-
-    model = "extras.dynamicgroup"
-
-    def right_page(self):
-        """Add content to the right side of the Devices detail view."""
-        return self.render(
-            "nautobot_firewall_models/inc/dynamic_group_policies.html",
-            extra_context={
-                "policies": self.context["object"].policydynamicgroupm2m_set.all(),
-                "nat_policies": self.context["object"].natpolicydynamicgroupm2m_set.all(),
-            },
-        )
-
-
-template_extensions = [DynamicGroupDevicePolicies, DevicePolicies, DynamicGroupPolicies]
+template_extensions = [DeviceFirewall, VirtualMachineFirewall]

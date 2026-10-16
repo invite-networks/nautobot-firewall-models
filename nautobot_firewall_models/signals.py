@@ -6,7 +6,6 @@ from django.dispatch import receiver
 from nautobot.dcim.models import Device
 from nautobot.extras.models import Status
 from nautobot.ipam.models import VRF, IPAddress, Prefix
-from nautobot.virtualization.models import VirtualMachine
 
 from nautobot_firewall_models import models
 from nautobot_firewall_models.constants import PLUGIN_CFG
@@ -20,8 +19,7 @@ ON_DELETE = {
     IPAddress: ["fqdns", "address_objects"],
     Prefix: ["address_objects"],
     VRF: ["zones"],
-    Device: ["zones", "address_objects"],
-    VirtualMachine: ["zones"],
+    Device: ["address_objects"],
     models.FQDN: ["address_objects"],
     models.AddressObject: [
         "address_object_groups",
@@ -87,6 +85,9 @@ ON_DELETE = {
     models.PolicyRule: [
         "policies",
     ],
+    models.Firewall: ["firewall_groups", "policies", "nat_policies", "zones"],
+    models.HAGroup: ["firewalls", "firewall_groups", "policies", "nat_policies", "zones"],
+    models.FirewallGroup: ["policies", "nat_policies", "zones"],
     models.NATPolicyRule: [
         "nat_policies",
     ],
@@ -98,7 +99,6 @@ if PLUGIN_CFG["protect_on_delete"]:
     @receiver(pre_delete, sender=Prefix)
     @receiver(pre_delete, sender=VRF)
     @receiver(pre_delete, sender=Device)
-    @receiver(pre_delete, sender=VirtualMachine)
     @receiver(pre_delete, sender=models.FQDN)
     @receiver(pre_delete, sender=models.AddressObject)
     @receiver(pre_delete, sender=models.AddressObjectGroup)
@@ -112,6 +112,9 @@ if PLUGIN_CFG["protect_on_delete"]:
     @receiver(pre_delete, sender=models.ZoneGroup)
     @receiver(pre_delete, sender=models.PolicyRule)
     @receiver(pre_delete, sender=models.NATPolicyRule)
+    @receiver(pre_delete, sender=models.Firewall)
+    @receiver(pre_delete, sender=models.HAGroup)
+    @receiver(pre_delete, sender=models.FirewallGroup)
     def on_delete_handler(instance, **kwargs):
         """Signal handler to enable on_delete=PROTECT."""
         for i in ON_DELETE[instance._meta.model]:
@@ -126,7 +129,8 @@ def check_group_members(group, field, objects):
         group.validate_members(**{field: objects})
 
 
-# Many-to-many assignments that depend on a rule type, host relative Address Objects or Managed Locally groups. Forms and the REST API run
+# Many-to-many assignments that depend on a rule type, host relative Address Objects, Managed Locally groups or HA
+# Groups. Forms and the REST API run
 # the same checks first for friendly errors; this catches every other path, such as bulk edit and scripts.
 # Each entry maps a through model to (field name, check), and check(owner, field, objects) raises ValidationError.
 M2M_CHECKS = {
@@ -163,6 +167,23 @@ M2M_CHECKS = {
     models.Policy.policy_rules.through: (
         "policy_rules",
         lambda policy, _field, objects: models.Policy.validate_policy_rules(policy.rule_type, objects),
+    ),
+    # Assignments to Firewalls, HA Groups and Firewall Groups. A Firewall in an HA Group is only used through it.
+    **{
+        getattr(models.Policy, field).through: (
+            field,
+            lambda policy, field, objects: models.Policy.validate_assignments(policy.rule_type, {field: objects}),
+        )
+        for field in ("assigned_firewalls", "assigned_ha_groups", "assigned_firewall_groups")
+    },
+    models.NATPolicy.assigned_firewalls.through: (
+        "assigned_firewalls",
+        lambda policy, field, objects: models.NATPolicy.validate_assignments({field: objects}),
+    ),
+    models.Zone.firewalls.through: ("firewalls", lambda zone, _field, objects: models.Zone.validate_bindings(objects)),
+    models.FirewallGroup.firewalls.through: (
+        "firewalls",
+        lambda group, _field, objects: models.FirewallGroup.validate_members(objects),
     ),
 }
 

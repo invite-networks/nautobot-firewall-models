@@ -1,12 +1,14 @@
 """Models for the Firewall app."""
 # pylint: disable=duplicate-code
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
 from nautobot.core.models.generics import PrimaryModel
 from nautobot.extras.models import StatusField
 from nautobot.extras.utils import extras_features
 
+from nautobot_firewall_models.models.appliance import refuse_ha_members
 from nautobot_firewall_models.utils import get_default_status
 
 ###########################
@@ -40,9 +42,12 @@ class Zone(PrimaryModel):
         help_text="Every Zone belongs to one Zone Group.",
     )
     vrfs = models.ManyToManyField(to="ipam.VRF", blank=True, related_name="zones", verbose_name="VRFs")
-    devices = models.ManyToManyField(to="dcim.Device", blank=True, related_name="zones")
-    virtual_machines = models.ManyToManyField(
-        to="virtualization.VirtualMachine", blank=True, related_name="zones", verbose_name="Virtual Machines"
+    firewalls = models.ManyToManyField(to="nautobot_firewall_models.Firewall", blank=True, related_name="zones")
+    ha_groups = models.ManyToManyField(
+        to="nautobot_firewall_models.HAGroup", blank=True, related_name="zones", verbose_name="HA Groups"
+    )
+    firewall_groups = models.ManyToManyField(
+        to="nautobot_firewall_models.FirewallGroup", blank=True, related_name="zones", verbose_name="Firewall Groups"
     )
     status = StatusField(
         on_delete=models.PROTECT,
@@ -59,6 +64,12 @@ class Zone(PrimaryModel):
     def __str__(self):
         """Stringify instance."""
         return self.name
+
+    @staticmethod
+    def validate_bindings(firewalls):
+        """Refuse Firewalls that are in an HA Group; the Zone is bound to the HA Group instead."""
+        if errors := refuse_ha_members("firewalls", firewalls):
+            raise ValidationError(errors)
 
 
 @extras_features(

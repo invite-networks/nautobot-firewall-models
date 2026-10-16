@@ -1,0 +1,29 @@
+{% load helpers %}
+{% comment %}The Policies and NAT Policies that reach this Firewall, HA Group or Firewall Group, however they are assigned.{% endcomment %}
+<table class="table table-hover card-body">
+    <tr>
+        <th>Policies</th>
+        <td>
+            {% for policy in object.assigned_policies %}
+                <a href="{{ policy.get_absolute_url }}">{{ policy }}</a>{% if not forloop.last %}<br/>{% endif %}
+            {% empty %}
+                {{ None|placeholder }}
+            {% endfor %}
+        </td>
+    </tr>
+    <tr>
+        <th>NAT Policies</th>
+        <td>
+            {% for policy in object.assigned_nat_policies %}
+                <a href="{{ policy.get_absolute_url }}">{{ policy }}</a>{% if not forloop.last %}<br/>{% endif %}
+            {% empty %}
+                {{ None|placeholder }}
+            {% endfor %}
+        </td>
+    </tr>
+</table>
+{% if object.policy_rules_url %}
+    <div class="card-footer">
+        <a href="{{ object.policy_rules_url }}">View this Firewall's Policy Rules in firewall order</a>
+    </div>
+{% endif %}
