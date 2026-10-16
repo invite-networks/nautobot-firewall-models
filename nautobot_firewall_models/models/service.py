@@ -1,6 +1,7 @@
 """Models for the Firewall app."""
 # pylint: disable=duplicate-code, too-many-lines
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from nautobot.apps.constants import CHARFIELD_MAX_LENGTH
 from nautobot.core.models.generics import PrimaryModel
@@ -9,7 +10,7 @@ from nautobot.extras.utils import extras_features
 
 from nautobot_firewall_models import choices, validators
 from nautobot_firewall_models.models.mixins import ManagedLocallyGroupMixin
-from nautobot_firewall_models.utils import get_default_status
+from nautobot_firewall_models.utils import get_default_status, is_managed_locally
 
 ###########################
 # Core Models
@@ -160,7 +161,8 @@ class ServiceObject(PrimaryModel):
     ip_protocol = models.CharField(
         choices=choices.IP_PROTOCOL_CHOICES,
         max_length=CHARFIELD_MAX_LENGTH,
-        help_text="IANA IP Protocol (e.g. TCP UDP ICMP)",
+        blank=True,
+        help_text="IANA IP Protocol (e.g. TCP UDP ICMP). Optional when the firewall defines the service (Managed Locally).",
         verbose_name="IP Protocol",
     )
     status = StatusField(
@@ -179,9 +181,17 @@ class ServiceObject(PrimaryModel):
 
     def __str__(self):
         """Stringify instance."""
+        if not self.ip_protocol:
+            return self.name
         if self.port:
             return f"{self.name} ({self.ip_protocol}/{self.port})"
         return f"{self.name} ({self.ip_protocol})"
+
+    def clean(self):
+        """Require an IP protocol unless the firewall defines the service, as it does for built in services."""
+        super().clean()
+        if not self.ip_protocol and not (self.status_id and is_managed_locally(self.status)):
+            raise ValidationError({"ip_protocol": "An IP protocol is required unless the service is Managed Locally."})
 
     def save(self, *args, **kwargs):
         """Overload save to call full_clean to ensure validators run."""

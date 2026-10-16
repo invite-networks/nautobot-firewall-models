@@ -1053,3 +1053,20 @@ class TestZoneVirtualMachines(TestCase):
         zone.virtual_machines.add(vm)
 
         self.assertEqual(list(vm.zones.all()), [zone])
+
+
+class TestManagedLocallyServiceObjects(TestCase):
+    """Test that only Managed Locally Service Objects may leave out the IP protocol."""
+
+    def test_normal_service_requires_a_protocol(self):
+        """A Service Object the app defines still needs an IP protocol."""
+        with self.assertRaises(ValidationError) as ctx:
+            ServiceObject.objects.create(name="no protocol", port="80")
+        self.assertIn("ip_protocol", ctx.exception.message_dict)
+
+    def test_managed_locally_service_needs_no_protocol(self):
+        """A built in service the firewall defines needs only a name."""
+        service = ServiceObject.objects.create(name="service-https", status=Status.objects.get(name="Managed Locally"))
+
+        self.assertEqual(service.ip_protocol, "")
+        self.assertEqual(str(service), "service-https")

@@ -30,6 +30,8 @@ This document describes all new features and changes in the release. The format 
 
 ### Fixed
 
+- Allowed an Application Object Group to be saved without Application Objects, which a Managed Locally group needs. The other group forms already allowed it.
+- Made the IP protocol optional on Managed Locally Service Objects, so a built in service such as `service-https` needs only a name. Other Service Objects still require it.
 - Showed validation errors for the hidden object and group fields behind the combined pickers on the picker itself. A refused save previously re-rendered the form with no message.
 
 ### Changed

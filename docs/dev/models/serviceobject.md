@@ -11,5 +11,6 @@ For well-known ports, it is best to use the port name as the name of the object.
 * Port (optional, int OR int range OR comma delimited list of int or int range)
     * Must be specified as a valid layer 4 port OR port range (e.g. 80 OR 8080-8088).
 * IP Protocol (string, choice field)
+    * Required, except on a Service Object whose status is Managed Locally, such as a PAN-OS built in service like `service-https`, which needs only a name.
     * IANA protocols (e.g. TCP UDP ICMP)
 * Status (FK to Status)

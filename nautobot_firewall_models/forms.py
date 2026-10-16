@@ -258,7 +258,9 @@ class ApplicationObjectGroupFilterForm(NautobotFilterForm):
 class ApplicationObjectGroupForm(fields.ManagedLocallyGroupFormMixin, NautobotModelForm):
     """ApplicationObjectGroup creation/edit form."""
 
-    application_objects = DynamicModelMultipleChoiceField(queryset=models.ApplicationObject.objects.all())
+    application_objects = DynamicModelMultipleChoiceField(
+        queryset=models.ApplicationObject.objects.all(), required=False
+    )
 
     class Meta:
         """Meta attributes."""

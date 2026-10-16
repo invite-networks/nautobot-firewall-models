@@ -1022,3 +1022,62 @@ class ZoneDevicePickerUIViewTest(TestCase):
         zone = Zone.objects.get(name="dmz")
         self.assertEqual(list(zone.devices.all()), [device])
         self.assertEqual(list(zone.virtual_machines.all()), [vm])
+
+
+class ManagedLocallyGroupWithoutMembersUIViewTest(TestCase):
+    """Test that every group form saves a Managed Locally group with no members selected."""
+
+    def test_group_forms_accept_managed_locally_without_members(self):
+        """A Managed Locally group needs only a name, on every group form that offers the status."""
+        managed = Status.objects.get(name="Managed Locally")
+        for model, route in (
+            (AddressObjectGroup, "addressobjectgroup"),
+            (ServiceObjectGroup, "serviceobjectgroup"),
+            (ApplicationObjectGroup, "applicationobjectgroup"),
+            (UserObjectGroup, "userobjectgroup"),
+        ):
+            self.add_permissions(f"nautobot_firewall_models.add_{route}", f"nautobot_firewall_models.view_{route}")
+            with self.subTest(model=model.__name__):
+                response = self.client.post(
+                    reverse(f"plugins:nautobot_firewall_models:{route}_add"),
+                    post_data({"name": "builtin", "status": managed.pk}),
+                )
+
+                self.assertHttpStatus(response, 302)
+                self.assertTrue(model.objects.filter(name="builtin", status=managed).exists())
+
+    def setUp(self):
+        """Grant view access to statuses."""
+        super().setUp()
+        self.add_permissions("extras.view_status")
+
+
+class ManagedLocallyServiceObjectUIViewTest(TestCase):
+    """Test the Service Object form with and without an IP protocol."""
+
+    def setUp(self):
+        """Grant access to add Service Objects."""
+        super().setUp()
+        self.add_permissions(
+            "nautobot_firewall_models.add_serviceobject",
+            "nautobot_firewall_models.view_serviceobject",
+            "extras.view_status",
+        )
+        self.url = reverse("plugins:nautobot_firewall_models:serviceobject_add")
+
+    def test_managed_locally_service_saves_without_protocol(self):
+        """The form saves a Managed Locally service with only a name."""
+        managed = Status.objects.get(name="Managed Locally")
+        response = self.client.post(self.url, post_data({"name": "service-http", "status": managed.pk}))
+
+        self.assertHttpStatus(response, 302)
+        self.assertTrue(ServiceObject.objects.filter(name="service-http", ip_protocol="").exists())
+
+    def test_normal_service_without_protocol_is_refused(self):
+        """The form still requires a protocol for an Active service."""
+        active = Status.objects.get(name="Active")
+        response = self.client.post(self.url, post_data({"name": "web", "port": "80", "status": active.pk}))
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "An IP protocol is required unless the service is Managed Locally.")
+        self.assertFalse(ServiceObject.objects.filter(name="web").exists())
