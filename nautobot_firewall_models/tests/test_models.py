@@ -24,7 +24,7 @@ class TestModels(TestCase):
 
     def test_create_zone_only_required(self):
         """Create Zone with only required fields, and validate null description and __str__."""
-        zone = Zone.objects.create(name="trust")
+        zone = Zone.objects.create(name="trust", zone_group=fixtures.default_zone_group())
 
         self.assertEqual(zone.description, "")
         self.assertEqual(zone.name, "trust")
@@ -32,7 +32,7 @@ class TestModels(TestCase):
 
     def test_create_zone_vrf_description_fields_success(self):
         """Create Zone with vrf & description fields."""
-        zone = Zone.objects.create(name="trust", description="LAN Zone")
+        zone = Zone.objects.create(name="trust", description="LAN Zone", zone_group=fixtures.default_zone_group())
         zone.vrfs.add(self.vrf)
 
         self.assertEqual(zone.description, "LAN Zone")
@@ -213,7 +213,7 @@ class TestPolicyRuleModels(TestCase):
     def test_policyrule_rule_details(self):
         """Test method rule_details on PolicyRule model."""
         rule_details = PolicyRule.objects.first().rule_details()
-        self.assertEqual(rule_details["log"], True)
+        self.assertEqual(rule_details["log_end"], True)
         # sample a few keys to ensure they are in there, more complete test in to_json test
         keys = ["rule", "source_address_groups", "destination_address_groups", "action"]
         self.assertTrue(set(keys).issubset(rule_details.keys()))
@@ -240,7 +240,7 @@ class TestPolicyModels(TestCase):
     def test_policy_policy_details(self):
         """Test method policy_details on Policy model."""
         policy_details = Policy.objects.first().policy_details[0]
-        self.assertEqual(policy_details["log"], True)
+        self.assertEqual(policy_details["log_end"], True)
         # sample a few keys to ensure they are in there, more complete test in to_json test
         keys = ["rule", "source_address_groups", "destination_address_groups", "action"]
         self.assertTrue(set(keys).issubset(policy_details.keys()))
@@ -325,11 +325,11 @@ class TestNATPolicyModels(TestCase):
 
 
 class TestZoneGroupModels(TestCase):
-    """Test the ZoneGroup model and how rules expand it."""
+    """Test the ZoneGroup model, the Zones that belong to it, and how rules expand it."""
 
     def setUp(self) -> None:
-        """Create the data."""
-        self.outside, self.inside, self.everything = fixtures.create_zone_group()
+        """Create the data: WAN in outside, LAN and DMZ in inside, and an empty spare group."""
+        self.outside, self.inside, self.spare = fixtures.create_zone_group()
         self.wan = Zone.objects.get(name="WAN")
         self.lan = Zone.objects.get(name="LAN")
         self.dmz = Zone.objects.get(name="DMZ")
@@ -343,9 +343,16 @@ class TestZoneGroupModels(TestCase):
         self.assertEqual(str(zone_group), "empty")
         self.assertEqual(zone_group.zones.count(), 0)
 
-    def test_zone_group_reverse_relation(self):
-        """A Zone lists every ZoneGroup it belongs to."""
-        self.assertEqual(set(self.lan.zone_groups.all()), {self.inside, self.everything})
+    def test_zone_belongs_to_one_group(self):
+        """Each Zone has one Zone Group, and the group lists its Zones."""
+        self.assertEqual(self.lan.zone_group, self.inside)
+        self.assertEqual(set(self.inside.zones.all()), {self.lan, self.dmz})
+
+    def test_zone_requires_a_group(self):
+        """A Zone without a Zone Group is refused."""
+        with self.assertRaises(ValidationError) as ctx:
+            Zone(name="orphan").full_clean()
+        self.assertIn("zone_group", ctx.exception.message_dict)
 
     def test_policy_rule_expanded_zones_without_zones(self):
         """A rule with no zones or zone groups expands to nothing (implicit any)."""
@@ -361,22 +368,23 @@ class TestZoneGroupModels(TestCase):
         rule = PolicyRule.objects.create(
             rule_type="panos", name="zone groups", action="allow", band=self.band, position="pre"
         )
-        rule.source_zones.set([self.wan])
+        rule.source_zones.set([self.wan, self.lan])
         rule.source_zone_groups.set([self.outside, self.inside])
-        rule.destination_zone_groups.set([self.inside, self.everything])
+        rule.destination_zone_groups.set([self.inside, self.spare])
 
         self.assertEqual(list(rule.expanded_source_zones()), [self.dmz, self.lan, self.wan])
-        self.assertEqual(list(rule.expanded_destination_zones()), [self.dmz, self.lan, self.wan])
+        self.assertEqual(list(rule.expanded_destination_zones()), [self.dmz, self.lan])
 
     def test_policy_rule_expanded_zones_reflects_group_changes(self):
-        """Expansion is evaluated on demand, so later group membership changes are picked up."""
+        """Expansion is evaluated on demand, so a Zone moved to another group is picked up."""
         rule = PolicyRule.objects.create(
             rule_type="panos", name="late change", action="allow", band=self.band, position="pre"
         )
         rule.source_zone_groups.set([self.outside])
         self.assertEqual(list(rule.expanded_source_zones()), [self.wan])
 
-        self.outside.zones.add(self.dmz)
+        self.dmz.zone_group = self.outside
+        self.dmz.save()
         self.assertEqual(list(rule.expanded_source_zones()), [self.dmz, self.wan])
 
     def test_nat_policy_rule_expanded_zones(self):
@@ -405,15 +413,21 @@ class TestZoneGroupModels(TestCase):
         rule = PolicyRule.objects.create(
             rule_type="panos", name="protected", action="allow", band=self.band, position="pre"
         )
-        rule.destination_zone_groups.set([self.outside])
+        rule.destination_zone_groups.set([self.spare])
 
         with self.assertRaises(ValidationError):
-            self.outside.delete()
+            self.spare.delete()
 
-    def test_zone_delete_protected_when_in_zone_group(self):
-        """A Zone that belongs to a ZoneGroup can not be deleted while protect_on_delete is enabled."""
-        with self.assertRaises(ValidationError):
-            self.dmz.delete()
+    def test_zone_group_with_zones_can_not_be_deleted(self):
+        """A Zone Group that still has Zones can not be deleted, since every Zone needs a group."""
+        with self.assertRaises(ProtectedError):
+            self.inside.delete()
+
+    def test_zone_in_a_group_can_be_deleted(self):
+        """Belonging to a group does not stop a Zone from being deleted."""
+        self.dmz.delete()
+
+        self.assertEqual(set(self.inside.zones.all()), {self.lan})
 
 
 class TestPolicyBandModels(TestCase):
@@ -544,7 +558,7 @@ class TestRuleTypes(TestCase):
     def setUp(self) -> None:
         """Create a band, a zone and a dynamic Address Object."""
         self.band, _, _ = fixtures.create_policy_band()
-        self.zone = Zone.objects.create(name="trust")
+        self.zone = Zone.objects.create(name="trust", zone_group=fixtures.default_zone_group())
         self.subnet = AddressObject.objects.create(name="host subnet", dynamic="subnet")
 
     def test_rule_type_is_required(self):
@@ -690,7 +704,7 @@ class TestHostRelativeUsage(TestCase):
         self.host = fixtures.create_linux_host()
         self.static = AddressObject.objects.create(name="static", prefix=self.host.primary_ip4.parent)
         self.subnet = AddressObject.objects.create(name="host subnet", dynamic="subnet")
-        self.zone = Zone.objects.create(name="trust")
+        self.zone = Zone.objects.create(name="trust", zone_group=fixtures.default_zone_group())
 
     def test_nat_rule_refuses_host_relative_address(self):
         """NAT rules refuse host relative Address Objects, from the rule side and the object side."""
@@ -1045,7 +1059,7 @@ class TestZoneVirtualMachines(TestCase):
     def test_zone_bound_to_device_and_virtual_machine(self):
         """A Zone can be bound to Devices and Virtual Machines, and each lists its Zones."""
         vm = fixtures.create_virtual_machine()
-        zone = Zone.objects.create(name="dmz")
+        zone = Zone.objects.create(name="dmz", zone_group=fixtures.default_zone_group())
         zone.virtual_machines.add(vm)
 
         self.assertEqual(list(vm.zones.all()), [zone])
@@ -1115,3 +1129,84 @@ class TestFinalPosition(TestCase):
             [PolicyRule(position=value).get_position_display() for value in ("pre", "post", "final")],
             ["Pre Rules", "Post Rules", "Final"],
         )
+
+
+class TestSessionLogging(TestCase):
+    """Test logging at session start and end on Policy Rules."""
+
+    def setUp(self) -> None:
+        """Create a band."""
+        self.band, _, _ = fixtures.create_policy_band()
+
+    def test_defaults_log_at_session_end_only(self):
+        """A new rule logs at session end and not at session start."""
+        rule = PolicyRule.objects.create(
+            name="default", action="allow", rule_type="panos", band=self.band, position="pre"
+        )
+
+        self.assertEqual((rule.log_start, rule.log_end), (False, True))
+
+    def test_nftables_refuses_log_at_session_start(self):
+        """Only PAN-OS rules log at session start."""
+        rule = PolicyRule(name="nft", action="allow", rule_type="nftables", chain="input", log_start=True)
+        with self.assertRaises(ValidationError) as ctx:
+            rule.full_clean()
+        self.assertIn("log_start", ctx.exception.message_dict)
+
+    def test_rule_details_include_both(self):
+        """rule_details exposes both logging options."""
+        rule = PolicyRule.objects.create(
+            name="both", action="allow", rule_type="panos", band=self.band, position="pre", log_start=True
+        )
+
+        details = rule.rule_details()
+        self.assertEqual((details["log_start"], details["log_end"]), (True, True))
+
+
+class TestPanosRuleType(TestCase):
+    """Test the PAN-OS rule type: Universal by default, Intrazone or Interzone when chosen."""
+
+    def setUp(self) -> None:
+        """Create a band and zones."""
+        self.band, _, _ = fixtures.create_policy_band()
+        self.wan, self.lan, _ = fixtures.create_zone()
+
+    def _rule(self, **fields):
+        return PolicyRule.objects.create(
+            name="rule", action="allow", rule_type="panos", band=self.band, position="pre", **fields
+        )
+
+    def test_panos_rules_default_to_universal(self):
+        """A PAN-OS rule saved without a PAN-OS rule type is Universal."""
+        self.assertEqual(self._rule().panos_rule_type, "universal")
+
+    def test_nftables_rules_have_no_panos_rule_type(self):
+        """nftables rules have no PAN-OS rule type, and setting one is refused."""
+        rule = PolicyRule.objects.create(name="nft", action="allow", rule_type="nftables", chain="input")
+        self.assertEqual(rule.panos_rule_type, "")
+
+        rule.panos_rule_type = "interzone"
+        with self.assertRaises(ValidationError) as ctx:
+            rule.full_clean()
+        self.assertIn("panos_rule_type", ctx.exception.message_dict)
+
+    def test_intrazone_rule_refuses_destination_zones(self):
+        """An Intrazone rule matches within its source zones, so destination zones and groups are refused."""
+        group = self.lan.zone_group
+        with self.assertRaises(ValidationError) as ctx:
+            PolicyRule.validate_relations(
+                "panos", {"destination_zones": [self.wan], "destination_zone_groups": [group]}, "intrazone"
+            )
+        self.assertEqual(set(ctx.exception.message_dict), {"destination_zones", "destination_zone_groups"})
+        rule = self._rule(panos_rule_type="intrazone")
+        rule.source_zones.add(self.lan)
+        with self.assertRaises(ValidationError), transaction.atomic():
+            rule.destination_zones.add(self.wan)
+
+    def test_interzone_and_universal_rules_take_destination_zones(self):
+        """Interzone and Universal rules may set destination zones."""
+        for panos_rule_type in ("interzone", "universal"):
+            rule = self._rule(panos_rule_type=panos_rule_type)
+            rule.destination_zones.add(self.wan)
+            self.assertEqual(list(rule.destination_zones.all()), [self.wan])
+            rule.delete()

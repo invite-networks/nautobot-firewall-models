@@ -73,7 +73,6 @@ ON_DELETE = {
         "policy_rules",
     ],
     models.Zone: [
-        "zone_groups",
         "source_policy_rules",
         "destination_policy_rules",
         "source_nat_policy_rules",
@@ -134,7 +133,9 @@ M2M_CHECKS = {
     **{
         getattr(models.PolicyRule, field).through: (
             field,
-            lambda rule, field, objects: models.PolicyRule.validate_relations(rule.rule_type, {field: objects}),
+            lambda rule, field, objects: models.PolicyRule.validate_relations(
+                rule.rule_type, {field: objects}, rule.panos_rule_type
+            ),
         )
         for field in (
             *models.PolicyRule.PANOS_ONLY_RELATIONS,

@@ -32,6 +32,13 @@ class Zone(PrimaryModel):
         blank=True,
     )
     name = models.CharField(max_length=CHARFIELD_MAX_LENGTH, unique=True, help_text="Name of the zone (e.g. trust)")
+    zone_group = models.ForeignKey(
+        to="nautobot_firewall_models.ZoneGroup",
+        on_delete=models.PROTECT,
+        related_name="zones",
+        verbose_name="Zone Group",
+        help_text="Every Zone belongs to one Zone Group.",
+    )
     vrfs = models.ManyToManyField(to="ipam.VRF", blank=True, related_name="zones", verbose_name="VRFs")
     devices = models.ManyToManyField(to="dcim.Device", blank=True, related_name="zones")
     virtual_machines = models.ManyToManyField(
@@ -65,7 +72,10 @@ class Zone(PrimaryModel):
     "webhooks",
 )
 class ZoneGroup(PrimaryModel):
-    """Groups together Zones so a single object can stand in for several zones on a rule."""
+    """Groups together Zones so a single object can stand in for several zones on a rule.
+
+    Each Zone chooses its one Zone Group, so a group's members are its `zones` reverse relation.
+    """
 
     description = models.CharField(
         max_length=1024,
@@ -73,12 +83,6 @@ class ZoneGroup(PrimaryModel):
     )
     name = models.CharField(
         max_length=CHARFIELD_MAX_LENGTH, unique=True, help_text="Name descriptor for a group of zones."
-    )
-    zones = models.ManyToManyField(
-        to="nautobot_firewall_models.Zone",
-        related_name="zone_groups",
-        blank=True,
-        verbose_name="Zones",
     )
     status = StatusField(
         on_delete=models.PROTECT,
@@ -100,5 +104,5 @@ class ZoneGroup(PrimaryModel):
 def expand_zones(zones, zone_groups):
     """Return the distinct Zones referenced directly or through any of the given ZoneGroups."""
     return Zone.objects.filter(
-        models.Q(pk__in=zones.values("pk")) | models.Q(zone_groups__in=zone_groups.values("pk"))
+        models.Q(pk__in=zones.values("pk")) | models.Q(zone_group__in=zone_groups.values("pk"))
     ).distinct()

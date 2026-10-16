@@ -28,7 +28,8 @@ Example GraphQL query showing how to get instances for each of the models provid
       name
       request_id
       action
-      log
+      log_start
+      log_end
       source_user {
         username
       }
@@ -131,7 +132,8 @@ Policy Rules are returned in firewall order: by Policy Band index, then Pre Rule
             "name": "Policy Rule 1",
             "request_id": "req1",
             "action": "DENY",
-            "log": true,
+            "log_start": false,
+            "log_end": true,
             "source_user": [
               {
                 "username": "user1"

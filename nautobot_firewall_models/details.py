@@ -354,6 +354,7 @@ policy_rule = ui.ObjectDetailContent(
             # Replace with `__all__` once order is fixed, needs additional_fields=["ip_addresses"]
             fields=[
                 "rule_type",
+                "panos_rule_type",
                 "band",
                 "position",
                 "chain",
@@ -421,7 +422,7 @@ zone = ui.ObjectDetailContent(
         ZoneFieldsPanel(
             section=ui.SectionChoices.LEFT_HALF,
             weight=100,
-            fields=["name", "description", "vrfs", "devices", "virtual_machines", "status"],
+            fields=["name", "zone_group", "description", "vrfs", "devices", "virtual_machines", "status"],
         ),
     ),
 )
@@ -437,9 +438,9 @@ zone_group = ui.ObjectDetailContent(
             weight=100,
             section=ui.SectionChoices.FULL_WIDTH,
             table_class=tables.ZoneTable,
-            table_filter="zone_groups",
-            related_field_name="zone_groups",
-            add_button_route=None,
+            table_filter="zone_group",
+            related_field_name="zone_group",
+            exclude_columns=["zone_group"],
         ),
     ),
 )

@@ -15,9 +15,5 @@
         <td>{% include "./policy_rule_application_object_row.html" with application=rule.applications.all application_group=rule.application_groups.all %}</td>
     {% endif %}
     <td>{% include "./policy_rule_action_row.html" with action=rule.action %}</td>
-    <td>
-        {% if rule.log %}
-            <span class="text-success"><i class="mdi mdi-check-bold"></i></span>{% else %}<span class="text-danger"><i class="mdi mdi-close-thick"></i></span>
-        {% endif %}
-    </td>
+    <td>{% include "./policy_rule_log_row.html" with rule=rule %}</td>
 </tr>

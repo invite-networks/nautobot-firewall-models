@@ -13,6 +13,9 @@ FINAL_ACTIONS = ("deny", "drop")
 
 RULE_TYPE_CHOICES = (("panos", "PAN-OS"), ("nftables", "nftables"))
 
+# The PAN-OS rule type: which zone pairs a security rule matches. Universal is the PAN-OS default.
+PANOS_RULE_TYPE_CHOICES = (("universal", "Universal"), ("intrazone", "Intrazone"), ("interzone", "Interzone"))
+
 CHAIN_CHOICES = (("input", "Input"), ("forward", "Forward"), ("output", "Output"))
 
 DYNAMIC_ADDRESS_CHOICES = (("subnet", "Subnet"),)

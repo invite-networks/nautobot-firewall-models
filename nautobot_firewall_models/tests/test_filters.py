@@ -143,8 +143,8 @@ class ZoneTestCase(FilterTestCases.FilterTestCase):
     queryset = models.Zone.objects.all()
     filterset = filters.ZoneFilterSet
     generic_filter_tests = (
-        ("zone_groups", "zone_groups__id"),
-        ("zone_groups", "zone_groups__name"),
+        ("zone_group", "zone_group__id"),
+        ("zone_group", "zone_group__name"),
         ("devices", "devices__id"),
         ("devices", "devices__name"),
     )
@@ -154,8 +154,10 @@ class ZoneTestCase(FilterTestCases.FilterTestCase):
         """Set up test data."""
         fixtures.create_zone_group()
         fixtures.bind_zone_devices()
-        # A zone outside every group, so each group filter matches a strict subset of zones.
-        models.Zone.objects.create(name="Guest", status=Status.objects.get(name="Active"))
+        # A zone in a third group, so each group filter matches a strict subset of zones.
+        models.Zone.objects.create(
+            name="Guest", status=Status.objects.get(name="Active"), zone_group=fixtures.default_zone_group()
+        )
 
 
 class ZoneGroupTestCase(FilterTestCases.FilterTestCase):

@@ -26,9 +26,13 @@ It is recommended to use a descriptive name to best identify a PolicyRule, other
 * Negate Destination (boolean, PAN-OS only, default false)
     * Matches every destination except the addresses set.
 * Action (string, choice of deny drop allow)
-* Log (boolean)
+* Log at Session Start (boolean, PAN-OS only, default false)
+* Log at Session End (boolean, default true)
+    * On nftables rules, which have one log, this is the rule's log. Their form starts it unchecked.
 * Request ID (optional, string)
     * Meant to represent an upstream request (e.g. an service request from an ITSM solution).
+* PAN-OS Rule Type (string, choice of universal intrazone interzone, PAN-OS only, default universal)
+    * Universal matches traffic within and between zones. Intrazone matches traffic within the source zones and takes no destination zone or zone group. Interzone matches traffic between different zones.
 * Band (FK to PolicyBand, PAN-OS only and required there)
     * The section of the policy the rule belongs to.
 * Position (string, choice of pre post final, PAN-OS only and required there)
@@ -42,7 +46,7 @@ Rules are ordered by band index (nftables rules have none and sort last), then P
 
 ## Rule Types
 
-* PAN-OS rules may use every field except Chain, Source Services and Source Service Groups. PAN-OS security rules match on destination service only.
+* PAN-OS rules may use every field except Chain, Source Services and Source Service Groups. An Intrazone PAN-OS rule also takes no destination zone or zone group. PAN-OS security rules match on destination service only.
 * nftables rules are host firewall rules. They may not use zones, zone groups, users, user groups, applications, application groups, a band, a position, negation or the remark action.
 * Address Objects that reference a Device or the dynamic Subnet only resolve per host, so they may only be used on nftables rules, directly or inside an Address Object Group.
 * A Policy holds rules of a single type, set by the Policy's own Rule Type.

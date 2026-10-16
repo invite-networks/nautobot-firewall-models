@@ -16,6 +16,9 @@ This document describes all new features and changes in the release. The format 
 
 ### Breaking Changes
 
+- Added `panos_rule_type` to PAN-OS Policy Rules: Universal by default, or Intrazone or Interzone. An Intrazone rule takes no destination zone or zone group, matching PAN-OS. The migration sets existing PAN-OS rules to Universal.
+- Bound each Zone to exactly one Zone Group with the required `zone_group` field on the Zone, replacing the Zone Group's `zones` list. A group is created first and Zones join it from the Zone form, its page lists its Zones, and it cannot be deleted while it has any. The migration moves each Zone's one group across and stops if a Zone has none or several. The Zone filter `zone_groups` is now `zone_group`.
+- Replaced `log` on Policy Rules with `log_start` (Log at Session Start, PAN-OS only, off by default) and `log_end` (Log at Session End, on by default). The migration copies each rule's `log` into `log_end`. On nftables rules `log_end` is the rule's one log, shown as Log and unchecked on a new rule. NAT Policy Rules keep `log`.
 - Renamed the Policy Rule positions `header` and `closer` to `pre` (Pre Rules) and `post` (Post Rules). The migration renames existing rules.
 - Removed Interfaces from Zones: the `interfaces` field, its form picker and its column. A Zone is bound to Devices and Virtual Machines instead.
 - Removed the IP Range model, its UI, its REST API endpoint `/api/plugins/firewall/ip-range/` and the `ip_range` field on Address Objects. The migration stops if any IP Ranges exist.

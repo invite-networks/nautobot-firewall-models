@@ -138,10 +138,10 @@ class UserObjectGroupFilterSet(BaseFilterSet, NautobotFilterSet):
 class ZoneFilterSet(BaseFilterSet, NautobotFilterSet):
     """Filter for Zone."""
 
-    zone_groups = NaturalKeyOrPKMultipleChoiceFilter(
-        field_name="zone_groups",
+    zone_group = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="zone_group",
         queryset=models.ZoneGroup.objects.all(),
-        label="Zone Groups (name or ID)",
+        label="Zone Group (name or ID)",
     )
     devices = NaturalKeyOrPKMultipleChoiceFilter(
         field_name="devices",
@@ -163,6 +163,12 @@ class ZoneFilterSet(BaseFilterSet, NautobotFilterSet):
 
 class ZoneGroupFilterSet(BaseFilterSet, NautobotFilterSet):
     """Filter for ZoneGroup."""
+
+    zones = NaturalKeyOrPKMultipleChoiceFilter(
+        field_name="zones",
+        queryset=models.Zone.objects.all(),
+        label="Zones (name or ID)",
+    )
 
     class Meta:
         """Meta attributes for filter."""

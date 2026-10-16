@@ -6,6 +6,8 @@ Zones are common on firewalls and are typically seen as representations of area 
 
 * Name (string)
 * Description (optional, string)
+* Zone Group (FK to ZoneGroup, required)
+    * The one Zone Group the Zone belongs to.
 * VRFs (M2M to VRF)
 * Devices (M2M to Device)
 * Virtual Machines (M2M to VirtualMachine)

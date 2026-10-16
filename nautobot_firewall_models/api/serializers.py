@@ -238,7 +238,8 @@ class PolicyRuleSerializer(NautobotModelSerializer, TaggedModelSerializerMixin):
                 relations[field] = attrs[field]
             elif self.instance:
                 relations[field] = getattr(self.instance, field).all()
-        run_model_check(models.PolicyRule.validate_relations, rule_type, relations)
+        panos_rule_type = attrs.get("panos_rule_type", self.instance.panos_rule_type if self.instance else None)
+        run_model_check(models.PolicyRule.validate_relations, rule_type, relations, panos_rule_type)
         return super().validate(attrs)
 
 

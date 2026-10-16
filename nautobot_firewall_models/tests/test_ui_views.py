@@ -236,16 +236,16 @@ class ZoneUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     def setUpTestData(cls):
         """Create test data for UI calls."""
         status = Status.objects.get(name="Active").id
-        Zone.objects.create(name="deleteableobj1")
-        Zone.objects.create(name="deleteableobj2")
-        Zone.objects.create(name="deleteableobj3")
-        cls.form_data = {"name": "trust", "status": status}
+        Zone.objects.create(name="deleteableobj1", zone_group=fixtures.default_zone_group())
+        Zone.objects.create(name="deleteableobj2", zone_group=fixtures.default_zone_group())
+        Zone.objects.create(name="deleteableobj3", zone_group=fixtures.default_zone_group())
+        cls.form_data = {"name": "trust", "zone_group": fixtures.default_zone_group().id, "status": status}
         fixtures.create_zone()
         cls.csv_data = (
-            "name,status",
-            "csvobj1,Active",
-            "csvobj2,Active",
-            "csvobj3,Active",
+            "name,zone_group,status",
+            "csvobj1,default,Active",
+            "csvobj2,default,Active",
+            "csvobj3,default,Active",
         )
 
 
@@ -259,17 +259,17 @@ class ZoneGroupUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
     def setUpTestData(cls):
         """Create test data for UI calls."""
         fixtures.create_zone_group()
-        zone = Zone.objects.first()
         status = Status.objects.get(name="Active").id
         ZoneGroup.objects.create(name="deleteableobj1")
         ZoneGroup.objects.create(name="deleteableobj2")
         ZoneGroup.objects.create(name="deleteableobj3")
-        cls.form_data = {"name": "test1", "zones": [zone.id], "status": status}
+        # Zones choose their group, so a group is created with only its own fields.
+        cls.form_data = {"name": "test1", "status": status}
         cls.csv_data = (
-            "name,zones,status",
-            f'csvobj1,"{zone.id}",Active',
-            f'csvobj2,"{zone.id}",Active',
-            f'csvobj3,"{zone.id}",Active',
+            "name,status",
+            "csvobj1,Active",
+            "csvobj2,Active",
+            "csvobj3,Active",
         )
 
 
@@ -334,7 +334,7 @@ class PolicyRuleUIViewTest(ViewTestCases.PrimaryObjectViewTestCase):
             "source_addresses_and_groups": [f"object:{src_addr.id}"],
             "destination_addresses_and_groups": [f"object:{dest_addr.id}"],
             "action": "deny",
-            "log": True,
+            "log_end": True,
             "destination_services_and_groups": [f"object:{svc.id}"],
             "name": "test rule",
             "status": status,
@@ -630,6 +630,29 @@ class PolicyRuleTypeUIViewTest(TestCase):
         for field in ("band", "position", "source_zones", "source_users", "applications"):
             self.assertNotContains(response, f'name="{field}"')
 
+    def test_panos_rule_type_starts_on_universal(self):
+        """The PAN-OS form offers the PAN-OS rule type starting on Universal; the nftables form has none."""
+        panos = self.client.get(f"{self.url}?rule_type=panos").content.decode()
+        nftables = self.client.get(f"{self.url}?rule_type=nftables").content.decode()
+
+        self.assertRegex(panos, r'<option value="universal"\s+selected')
+        self.assertIn('<option value="intrazone"', panos)
+        self.assertIn('<option value="interzone"', panos)
+        self.assertNotIn('name="panos_rule_type"', nftables)
+
+    def test_session_logging_on_each_form(self):
+        """PAN-OS rules choose both session logs, with session end on by default. nftables rules have one log, off."""
+        panos = self.client.get(f"{self.url}?rule_type=panos")
+        nftables = self.client.get(f"{self.url}?rule_type=nftables")
+
+        self.assertContains(panos, 'name="log_start"')
+        self.assertContains(panos, "Log at Session End")
+        self.assertRegex(panos.content.decode(), r'name="log_end"[^>]*checked')
+        self.assertNotContains(nftables, 'name="log_start"')
+        self.assertContains(nftables, 'name="log_end"')
+        self.assertNotContains(nftables, "Log at Session End")
+        self.assertNotRegex(nftables.content.decode(), r'name="log_end"[^>]*checked')
+
     def test_negate_checkboxes_only_on_panos_form(self):
         """The PAN-OS form has the negate checkboxes and the nftables form does not."""
         panos = self.client.get(f"{self.url}?rule_type=panos")
@@ -694,7 +717,7 @@ class ObjectOrGroupPickerUIViewTest(TestCase):
     def setUpTestData(cls):
         """Create a band, a Zone and a Zone Group."""
         cls.band, _, _ = fixtures.create_policy_band()
-        cls.zone = Zone.objects.create(name="trust")
+        cls.zone = Zone.objects.create(name="trust", zone_group=fixtures.default_zone_group())
         cls.group = ZoneGroup.objects.create(name="inside")
         cls.status = Status.objects.get(name="Active")
         cls.rule_url = reverse("plugins:nautobot_firewall_models:policyrule_add")
@@ -991,6 +1014,7 @@ class ZoneDevicePickerUIViewTest(TestCase):
         self.add_permissions(
             "nautobot_firewall_models.add_zone",
             "nautobot_firewall_models.view_zone",
+            "nautobot_firewall_models.view_zonegroup",
             "dcim.view_device",
             "virtualization.view_virtualmachine",
             "extras.view_status",
@@ -1013,6 +1037,7 @@ class ZoneDevicePickerUIViewTest(TestCase):
         vm = fixtures.create_virtual_machine()
         data = {
             "name": "dmz",
+            "zone_group": fixtures.default_zone_group().pk,
             "status": Status.objects.get(name="Active").pk,
             "devices_and_groups": [f"object:{device.pk}", f"group:{vm.pk}"],
         }

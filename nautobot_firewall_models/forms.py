@@ -473,6 +473,9 @@ class ZoneFilterForm(NautobotFilterForm):
         help_text="Search within Name or Description.",
     )
     name = forms.CharField(required=False, label="Name")
+    zone_group = DynamicModelMultipleChoiceField(
+        queryset=models.ZoneGroup.objects.all(), to_field_name="name", required=False, label="Zone Group"
+    )
     vrfs = DynamicModelChoiceField(queryset=VRF.objects.all(), label="VRF")
     devices = DynamicModelChoiceField(queryset=Device.objects.all(), label="Device")
     virtual_machines = DynamicModelChoiceField(queryset=VirtualMachine.objects.all(), label="Virtual Machine")
@@ -481,6 +484,7 @@ class ZoneFilterForm(NautobotFilterForm):
 class ZoneForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
     """Zone creation/edit form, with one picker for the Devices and Virtual Machines the Zone is bound to."""
 
+    zone_group = DynamicModelChoiceField(queryset=models.ZoneGroup.objects.all(), label="Zone Group")
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
     devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
     virtual_machines = DynamicModelMultipleChoiceField(
@@ -491,7 +495,7 @@ class ZoneForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
         """Meta attributes."""
 
         model = models.Zone
-        fields = ["name", "description", "vrfs", "devices", "virtual_machines", "status", "tags"]
+        fields = ["name", "zone_group", "description", "vrfs", "devices", "virtual_machines", "status", "tags"]
 
     def __init__(self, *args, **kwargs):
         """Show one picker for Devices and Virtual Machines."""
@@ -503,6 +507,7 @@ class ZoneBulkEditForm(NautobotBulkEditForm):
     """Zone bulk edit form."""
 
     pk = DynamicModelMultipleChoiceField(queryset=models.Zone.objects.all(), widget=forms.MultipleHiddenInput)
+    zone_group = DynamicModelChoiceField(queryset=models.ZoneGroup.objects.all(), required=False, label="Zone Group")
     description = forms.CharField(required=False)
     vrfs = DynamicModelMultipleChoiceField(queryset=VRF.objects.all(), required=False, label="VRF")
     devices = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False, label="Devices")
@@ -532,15 +537,13 @@ class ZoneGroupFilterForm(NautobotFilterForm):
 
 
 class ZoneGroupForm(NautobotModelForm):
-    """ZoneGroup creation/edit form."""
-
-    zones = DynamicModelMultipleChoiceField(queryset=models.Zone.objects.all(), required=False)
+    """ZoneGroup creation/edit form. Zones choose their group, so the group form does not pick them."""
 
     class Meta:
         """Meta attributes."""
 
         model = models.ZoneGroup
-        fields = ["name", "description", "zones", "status", "tags"]
+        fields = ["name", "description", "status", "tags"]
 
 
 class ZoneGroupBulkEditForm(NautobotBulkEditForm):
@@ -685,6 +688,7 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
             # pylint: disable=duplicate-code
             "name",
             "rule_type",
+            "panos_rule_type",
             "band",
             "position",
             "chain",
@@ -708,7 +712,8 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
             "applications",
             "application_groups",
             "action",
-            "log",
+            "log_start",
+            "log_end",
             "status",
             "tags",
             "request_id",
@@ -717,6 +722,7 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
 
     def __init__(self, *args, **kwargs):
         """Drop the fields the rule type cannot use."""
+        requested = kwargs.get("initial") or {}
         super().__init__(*args, **kwargs)
         if self.instance.present_in_database:
             rule_type = self.instance.rule_type
@@ -730,14 +736,23 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
                 "position",
                 "negate_source",
                 "negate_destination",
+                "log_start",
+                "panos_rule_type",
                 *models.PolicyRule.PANOS_ONLY_RELATIONS,
             ):
                 del self.fields[field]
+            # nftables has one log, kept in log_end, and a host firewall should not log every match by default.
+            self.fields["log_end"].label = "Log"
+            self.fields["log_end"].widget.attrs["placeholder"] = "Log"
+            if not self.instance.present_in_database and "log_end" not in requested:
+                self.initial["log_end"] = False
             self.fields["chain"].required = True
             self.fields["action"].choices = [i for i in self.fields["action"].choices if i[0] != "remark"]
         else:
             for field in ("chain", *models.PolicyRule.NFTABLES_ONLY_RELATIONS):
                 del self.fields[field]
+            if not self.instance.present_in_database and "panos_rule_type" not in requested:
+                self.initial["panos_rule_type"] = "universal"
             self.fields["band"].required = True
             self.fields["position"].required = True
         self.combine_grouped_fields()
@@ -746,7 +761,9 @@ class PolicyRuleForm(fields.ObjectOrGroupFormMixin, NautobotModelForm):
         """Use the rule type the form was built for and check the related objects against it."""
         super().clean()
         self.cleaned_data["rule_type"] = self.rule_type
-        models.PolicyRule.validate_relations(self.cleaned_data.get("rule_type"), self.cleaned_data)
+        models.PolicyRule.validate_relations(
+            self.cleaned_data.get("rule_type"), self.cleaned_data, self.cleaned_data.get("panos_rule_type")
+        )
         return self.cleaned_data
 
 
@@ -758,9 +775,13 @@ class PolicyRuleBulkEditForm(NautobotBulkEditForm):
     band = DynamicModelChoiceField(queryset=models.PolicyBand.objects.all(), required=False, label="Policy Band")
     position = forms.ChoiceField(choices=add_blank_choice(choices.POSITION_CHOICES), required=False)
     chain = forms.ChoiceField(choices=add_blank_choice(choices.CHAIN_CHOICES), required=False)
+    panos_rule_type = forms.ChoiceField(
+        choices=add_blank_choice(choices.PANOS_RULE_TYPE_CHOICES), required=False, label="PAN-OS Rule Type"
+    )
     index = forms.IntegerField(required=False, min_value=0)
     action = forms.ChoiceField(choices=add_blank_choice(choices.ACTION_CHOICES), required=False)
-    log = forms.BooleanField(required=False)
+    log_start = forms.NullBooleanField(required=False, widget=BulkEditNullBooleanSelect, label="Log at Session Start")
+    log_end = forms.NullBooleanField(required=False, widget=BulkEditNullBooleanSelect, label="Log at Session End")
     description = forms.CharField(required=False)
 
     class Meta:
@@ -984,10 +1005,14 @@ class NATPolicyRuleBulkEditForm(PolicyRuleBulkEditForm):
     """NATPolicyRule bulk edit form."""
 
     pk = DynamicModelMultipleChoiceField(queryset=models.NATPolicyRule.objects.all(), widget=forms.MultipleHiddenInput)
-    # NAT rules have no band, position or chain, so drop the ones inherited from PolicyRuleBulkEditForm.
+    # NAT rules have no band, position, chain or session logging, so drop the ones inherited from
+    # PolicyRuleBulkEditForm.
     band = None
     position = None
     chain = None
+    panos_rule_type = None
+    log_start = None
+    log_end = None
     log = forms.BooleanField(required=False)
     description = forms.CharField(required=False)
 

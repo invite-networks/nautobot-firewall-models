@@ -150,13 +150,14 @@ class ZoneTable(StatusTableMixin, BaseTable):
 
     pk = ToggleColumn()
     name = tables.Column(linkify=True)
+    zone_group = tables.Column(linkify=True)
     actions = ButtonsColumn(models.Zone, buttons=("edit", "delete"))
 
     class Meta(BaseTable.Meta):
         """Meta attributes."""
 
         model = models.Zone
-        fields = ("pk", "name", "vrfs", "devices", "virtual_machines", "description", "status")
+        fields = ("pk", "name", "zone_group", "vrfs", "devices", "virtual_machines", "description", "status")
 
 
 class ZoneGroupTable(StatusTableMixin, BaseTable):
@@ -206,6 +207,7 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             # pylint: disable=duplicate-code
             "pk",
             "rule_type",
+            "panos_rule_type",
             "band",
             "position",
             "chain",
@@ -232,13 +234,15 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             "action",
             "description",
             "request_id",
-            "log",
+            "log_start",
+            "log_end",
             "status",
             "actions",
         )
         default_columns = (
             "pk",
             "rule_type",
+            "panos_rule_type",
             "band",
             "position",
             "chain",
@@ -263,7 +267,8 @@ class PolicyRuleTable(StatusTableMixin, BaseTable):
             "applications",
             "application_groups",
             "action",
-            "log",
+            "log_start",
+            "log_end",
             "status",
             "actions",
         )

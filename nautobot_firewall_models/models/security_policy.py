@@ -96,6 +96,8 @@ class PolicyRule(PrimaryModel):
                 "position": "Only PAN-OS rules have a position.",
                 "negate_source": "Only PAN-OS rules can negate an address.",
                 "negate_destination": "Only PAN-OS rules can negate an address.",
+                "log_start": "Only PAN-OS rules log at session start.",
+                "panos_rule_type": "Only PAN-OS rules have a PAN-OS rule type.",
             },
         ),
     }
@@ -195,7 +197,12 @@ class PolicyRule(PrimaryModel):
         verbose_name="Destination Service Groups",
     )
     action = models.CharField(choices=choices.ACTION_CHOICES, max_length=CHARFIELD_MAX_LENGTH)
-    log = models.BooleanField(default=False)
+    log_start = models.BooleanField(
+        default=False, verbose_name="Log at Session Start", help_text="PAN-OS only. Log when a session starts."
+    )
+    log_end = models.BooleanField(
+        default=True, verbose_name="Log at Session End", help_text="Log when a session ends. On nftables rules, log."
+    )
     negate_source = models.BooleanField(
         default=False,
         verbose_name="Negate Source",
@@ -222,6 +229,16 @@ class PolicyRule(PrimaryModel):
     )
     request_id = models.CharField(max_length=CHARFIELD_MAX_LENGTH, blank=True, verbose_name="Request ID")
     description = models.CharField(max_length=1024, blank=True)
+    panos_rule_type = models.CharField(
+        choices=choices.PANOS_RULE_TYPE_CHOICES,
+        max_length=CHARFIELD_MAX_LENGTH,
+        blank=True,
+        verbose_name="PAN-OS Rule Type",
+        help_text=(
+            "PAN-OS only, Universal when left empty. Intrazone matches traffic within the source zones and takes no "
+            "destination zone; Interzone matches traffic between different zones."
+        ),
+    )
     band = models.ForeignKey(
         to="nautobot_firewall_models.PolicyBand",
         on_delete=models.PROTECT,
@@ -269,7 +286,8 @@ class PolicyRule(PrimaryModel):
         "destination_services",
         "destination_service_groups",
         "action",
-        "log",
+        "log_start",
+        "log_end",
         "status",
     ]
     natural_key_field_names = ["pk"]
@@ -293,6 +311,7 @@ class PolicyRule(PrimaryModel):
         row = {}
         row["rule"] = self
         row["rule_type"] = self.rule_type
+        row["panos_rule_type"] = self.panos_rule_type
         row["band"] = self.band
         row["position"] = self.position
         row["chain"] = self.chain
@@ -315,13 +334,22 @@ class PolicyRule(PrimaryModel):
         row["negate_source"] = self.negate_source
         row["negate_destination"] = self.negate_destination
         row["action"] = self.action
-        row["log"] = self.log
+        row["log_start"] = self.log_start
+        row["log_end"] = self.log_end
         row["status"] = self.status
         row["request_id"] = self.request_id
         return row
 
+    def save(self, *args, **kwargs):
+        """Default a PAN-OS rule's PAN-OS rule type to Universal, as PAN-OS does."""
+        if self.rule_type == "panos" and not self.panos_rule_type:
+            self.panos_rule_type = "universal"
+        super().save(*args, **kwargs)
+
     def clean(self):
         """Require the fields the rule type needs and refuse the ones it cannot use."""
+        if self.rule_type == "panos" and not self.panos_rule_type:
+            self.panos_rule_type = "universal"
         super().clean()
         errors = {}
         required, refused = self.TYPE_FIELDS.get(self.rule_type, ({}, {}))
@@ -340,13 +368,18 @@ class PolicyRule(PrimaryModel):
             raise ValidationError(errors)
 
     @classmethod
-    def validate_relations(cls, rule_type, relations):
+    def validate_relations(cls, rule_type, relations, panos_rule_type=None):
         """Refuse related objects that the rule type cannot render.
 
         `relations` maps a many-to-many field name to the objects being assigned. Forms and the API call this, since
-        many-to-many values are not on the instance when `clean()` runs.
+        many-to-many values are not on the instance when `clean()` runs. An Intrazone PAN-OS rule takes no
+        destination zone, since it matches traffic within its source zones.
         """
         errors = {}
+        if rule_type == "panos" and panos_rule_type == "intrazone":
+            for field in ("destination_zones", "destination_zone_groups"):
+                if relations.get(field):
+                    errors[field] = "An Intrazone rule matches within its source zones, so it has no destination zone."
         if rule_type == "nftables":
             for field in cls.PANOS_ONLY_RELATIONS:
                 if relations.get(field):

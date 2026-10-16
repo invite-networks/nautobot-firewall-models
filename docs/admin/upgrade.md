@@ -43,7 +43,13 @@ Integrations must now send `rule_type` when creating Policy Rules and Policies. 
 
 Version 4.3 removes IP Ranges. The migration stops if any IP Ranges exist. Change every Address Object that uses one to a Prefix, IP Address or FQDN, delete the IP Ranges, then upgrade. Integrations that call `/api/plugins/firewall/ip-range/` or read `ip_range` on Address Objects must be updated.
 
-Policy Rule positions are renamed: `header` becomes `pre` (Pre Rules) and `closer` becomes `post` (Post Rules). The migration renames existing rules, so update any integration that sends or reads the old values. A new `final` position holds a band's closing deny or drop rules, which always sort last in the band.
+Policy Rule positions are renamed: `header` becomes `pre` (Pre Rules) and `closer` becomes `post` (Post Rules). The migration renames existing rules, so update any integration that sends or reads the old values. Policy Rule `log` is split into `log_start` (Log at Session Start, off by default) and `log_end` (Log at Session End, on by default). The migration copies each rule's `log` into `log_end` and leaves `log_start` off; update any integration that reads or sends `log` on Policy Rules. NAT Policy Rules keep `log`.
+
+Each Zone now belongs to exactly one Zone Group, set with the required `zone_group` field on the Zone, in place of the Zone Group's `zones` list. The migration gives every Zone the one group it belongs to and stops if any Zone belongs to none or to several; fix those Zones first. Integrations must send `zone_group` when creating a Zone and no longer send `zones` on a Zone Group. Filter Zones with `?zone_group=<name or id>`.
+
+PAN-OS Policy Rules gain `panos_rule_type` (`universal`, `intrazone` or `interzone`). The migration sets every existing PAN-OS rule to `universal`, the PAN-OS default, and a PAN-OS rule saved without one is Universal.
+
+A new `final` position holds a band's closing deny or drop rules, which always sort last in the band.
 
 The migration also creates the Managed Locally status and adds the negate and flatten fields with defaults of false, so no other step is needed.
 

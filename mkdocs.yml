@@ -132,6 +132,7 @@ nav:
           - User Object: "dev/models/userobject.md"
           - User Object Group: "dev/models/userobjectgroup.md"
           - Zone: "dev/models/zone.md"
+          - Zone Group: "dev/models/zonegroup.md"
   - Administrator Guide:
       - Install and Configure: "admin/install.md"
       - Upgrade: "admin/upgrade.md"

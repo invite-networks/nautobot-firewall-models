@@ -224,13 +224,14 @@ class ZoneAPIViewTest(APIViewTestCases.APIViewTestCase):
     @classmethod
     def setUpTestData(cls):
         """Create test data for API calls."""
+        group = fixtures.default_zone_group()
         cls.create_data = [
-            {"name": "trust"},
-            {"name": "untrust"},
+            {"name": "trust", "zone_group": group.id},
+            {"name": "untrust", "zone_group": group.id},
         ]
-        models.Zone.objects.create(name="deleteableobj1")
-        models.Zone.objects.create(name="deleteableobj2")
-        models.Zone.objects.create(name="deleteableobj3")
+        models.Zone.objects.create(name="deleteableobj1", zone_group=fixtures.default_zone_group())
+        models.Zone.objects.create(name="deleteableobj2", zone_group=fixtures.default_zone_group())
+        models.Zone.objects.create(name="deleteableobj3", zone_group=fixtures.default_zone_group())
         fixtures.create_zone()
 
 
@@ -244,14 +245,14 @@ class ZoneGroupAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIViewT
     def setUpTestData(cls):
         """Create test data for API calls."""
         fixtures.create_zone_group()
-        zone = models.Zone.objects.first()
         models.ZoneGroup.objects.create(name="deleteableobj1")
         models.ZoneGroup.objects.create(name="deleteableobj2")
         models.ZoneGroup.objects.create(name="deleteableobj3")
 
+        # Zones choose their group, so a group is created with only its own fields.
         cls.create_data = [
-            {"name": "test1", "zones": [zone.id]},
-            {"name": "test2", "zones": [zone.id]},
+            {"name": "test1"},
+            {"name": "test2"},
         ]
 
 
@@ -278,8 +279,8 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
     """Test the PolicyRule viewsets."""
 
     model = models.PolicyRule
-    bulk_update_data = {"log": False}
-    choices_fields = ["action", "position", "rule_type", "chain"]
+    bulk_update_data = {"log_end": False}
+    choices_fields = ["action", "position", "rule_type", "chain", "panos_rule_type"]
 
     @classmethod
     def setUpTestData(cls):
@@ -306,7 +307,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "source_addresses": [src_addr.id],
                 "destination_addresses": [dest_addr.id],
                 "action": "deny",
-                "log": True,
+                "log_end": True,
                 "destination_services": [svc.id],
                 "name": "test rule 1",
                 "rule_type": "panos",
@@ -318,7 +319,7 @@ class PolicyRuleAPIViewTest(IncludeM2MAPITestCaseMixin, APIViewTestCases.APIView
                 "source_addresses": [src_addr.id],
                 "destination_addresses": [dest_addr.id],
                 "action": "deny",
-                "log": False,
+                "log_end": False,
                 "destination_services": [svc.id],
                 "name": "test rule 2",
                 "rule_type": "panos",
@@ -545,6 +546,7 @@ class ZoneDevicesAPITest(APITestCase):
         self.add_permissions(
             "nautobot_firewall_models.add_zone",
             "nautobot_firewall_models.view_zone",
+            "nautobot_firewall_models.view_zonegroup",
             "dcim.view_device",
             "extras.view_status",
         )
@@ -554,6 +556,7 @@ class ZoneDevicesAPITest(APITestCase):
         url = reverse("plugins-api:nautobot_firewall_models-api:zone-list")
         data = {
             "name": "shared",
+            "zone_group": str(fixtures.default_zone_group().pk),
             "status": Status.objects.get(name="Active").pk,
             "devices": [str(dev.pk) for dev in self.devices],
         }
@@ -569,7 +572,9 @@ class ZoneDevicesAPITest(APITestCase):
 
     def test_graphql_zone_devices(self):
         """GraphQL lists each Zone's devices."""
-        zone = models.Zone.objects.create(name="shared", status=Status.objects.get(name="Active"))
+        zone = models.Zone.objects.create(
+            name="shared", status=Status.objects.get(name="Active"), zone_group=fixtures.default_zone_group()
+        )
         zone.devices.set(self.devices)
         query = 'query { zones(name: "shared") { devices { name } } }'
         response = self.client.post(reverse("graphql-api"), {"query": query}, format="json", **self.header)
@@ -586,7 +591,7 @@ class RuleTypeAPITest(APITestCase):
     def setUpTestData(cls):
         """Create a band, a zone, a dynamic Address Object and a group that holds it."""
         cls.band, _, _ = fixtures.create_policy_band()
-        cls.zone = models.Zone.objects.create(name="trust")
+        cls.zone = models.Zone.objects.create(name="trust", zone_group=fixtures.default_zone_group())
         cls.subnet = models.AddressObject.objects.create(name="host subnet", dynamic="subnet")
         cls.url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-list")
 
@@ -638,6 +643,34 @@ class RuleTypeAPITest(APITestCase):
 
         self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
         self.assertIn("source_services", response.data)
+
+    def test_panos_rule_defaults_to_universal(self):
+        """A PAN-OS rule created without a PAN-OS rule type is Universal."""
+        response = self._post(rule_type="panos", band=str(self.band.pk), position="pre")
+
+        self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)
+        self.assertEqual(response.data["panos_rule_type"], "universal")
+
+    def test_intrazone_rule_with_destination_zone_is_refused(self):
+        """The API refuses destination zones on an Intrazone rule, including when a PATCH makes it Intrazone."""
+        response = self._post(
+            rule_type="panos",
+            band=str(self.band.pk),
+            position="pre",
+            panos_rule_type="intrazone",
+            destination_zones=[str(self.zone.pk)],
+        )
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Intrazone", str(response.data["destination_zones"]))
+
+        rule = models.PolicyRule.objects.create(
+            name="interzone", action="allow", rule_type="panos", band=self.band, position="pre"
+        )
+        rule.destination_zones.add(self.zone)
+        url = reverse("plugins-api:nautobot_firewall_models-api:policyrule-detail", kwargs={"pk": rule.pk})
+        response = self.client.patch(url, {"panos_rule_type": "intrazone"}, format="json", **self.header)
+        self.assertHttpStatus(response, drf_status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Intrazone", str(response.data["destination_zones"]))
 
     def test_patch_keeps_saved_relations_in_the_check(self):
         """A PATCH that leaves zones out still sees the saved rule type."""
@@ -760,7 +793,9 @@ class GroupedObjectsAPITest(APITestCase):
     def setUpTestData(cls):
         """Create two Zone Groups and three Zones."""
         cls.groups = [models.ZoneGroup.objects.create(name=name) for name in ("inside", "outside")]
-        cls.zones = [models.Zone.objects.create(name=name) for name in ("dmz", "trust", "untrust")]
+        cls.zones = [
+            models.Zone.objects.create(name=name, zone_group=cls.groups[0]) for name in ("dmz", "trust", "untrust")
+        ]
 
     def setUp(self):
         """Grant view access to Zones and Zone Groups."""
@@ -974,6 +1009,7 @@ class ZoneVirtualMachineAPITest(APITestCase):
         self.add_permissions(
             "nautobot_firewall_models.add_zone",
             "nautobot_firewall_models.view_zone",
+            "nautobot_firewall_models.view_zonegroup",
             "dcim.view_device",
             "virtualization.view_virtualmachine",
         )
@@ -983,7 +1019,14 @@ class ZoneVirtualMachineAPITest(APITestCase):
         """A Zone can be created bound to a Virtual Machine, and filtered by it."""
         url = reverse("plugins-api:nautobot_firewall_models-api:zone-list")
         response = self.client.post(
-            url, {"name": "vm zone", "virtual_machines": [str(self.vm.pk)]}, format="json", **self.header
+            url,
+            {
+                "name": "vm zone",
+                "zone_group": str(fixtures.default_zone_group().pk),
+                "virtual_machines": [str(self.vm.pk)],
+            },
+            format="json",
+            **self.header,
         )
 
         self.assertHttpStatus(response, drf_status.HTTP_201_CREATED)

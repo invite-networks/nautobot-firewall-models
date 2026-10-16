@@ -1,0 +1,8 @@
+{% comment %}A PAN-OS rule logs at session start and at session end; an nftables rule has one log, kept in log_end.{% endcomment %}
+{% if rule.rule_type == "panos" %}
+    <span title="Log at Session Start">Start</span>
+    {% if rule.log_start %}<span class="text-success"><i class="mdi mdi-check-bold"></i></span>{% else %}<span class="text-danger"><i class="mdi mdi-close-thick"></i></span>{% endif %}
+    <br/>
+    <span title="Log at Session End">End</span>
+{% endif %}
+{% if rule.log_end %}<span class="text-success"><i class="mdi mdi-check-bold"></i></span>{% else %}<span class="text-danger"><i class="mdi mdi-close-thick"></i></span>{% endif %}

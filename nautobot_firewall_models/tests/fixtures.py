@@ -97,28 +97,30 @@ def create_user_group():
     return usr_grp1, usr_grp2, usr_grp3
 
 
+def default_zone_group():
+    """Return a Zone Group for tests that need a Zone but not a particular group."""
+    return ZoneGroup.objects.get_or_create(name="default", status=Status.objects.get(name="Active"))[0]
+
+
 def create_zone():
-    """Creates 3 of all objects."""
+    """Creates 3 zones: WAN in the outside group, LAN and DMZ in the inside group."""
     status = Status.objects.get(name="Active")
     vrf, _ = VRF.objects.get_or_create(name="global")
-    zone1, _ = Zone.objects.get_or_create(name="WAN", status=status)
+    outside, _ = ZoneGroup.objects.get_or_create(name="outside", status=status)
+    inside, _ = ZoneGroup.objects.get_or_create(name="inside", status=status)
+    zone1, _ = Zone.objects.get_or_create(name="WAN", status=status, zone_group=outside)
     zone1.vrfs.set([vrf])
-    zone2, _ = Zone.objects.get_or_create(name="LAN", status=status)
-    zone3, _ = Zone.objects.get_or_create(name="DMZ", status=status)
+    zone2, _ = Zone.objects.get_or_create(name="LAN", status=status, zone_group=inside)
+    zone3, _ = Zone.objects.get_or_create(name="DMZ", status=status, zone_group=inside)
     return zone1, zone2, zone3
 
 
 def create_zone_group():
-    """Creates 3 zone groups with overlapping zone membership."""
-    zone1, zone2, zone3 = create_zone()
+    """Creates the zones and returns their groups: outside (WAN), inside (LAN, DMZ) and an empty spare group."""
+    create_zone()
     status = Status.objects.get(name="Active")
-    zone_grp1, _ = ZoneGroup.objects.get_or_create(name="outside", status=status)
-    zone_grp1.zones.set([zone1])
-    zone_grp2, _ = ZoneGroup.objects.get_or_create(name="inside", status=status)
-    zone_grp2.zones.set([zone2, zone3])
-    zone_grp3, _ = ZoneGroup.objects.get_or_create(name="everything", status=status)
-    zone_grp3.zones.set([zone1, zone2, zone3])
-    return zone_grp1, zone_grp2, zone_grp3
+    spare, _ = ZoneGroup.objects.get_or_create(name="spare", status=status)
+    return ZoneGroup.objects.get(name="outside"), ZoneGroup.objects.get(name="inside"), spare
 
 
 def create_app_obj():
@@ -200,7 +202,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule1, _ = PolicyRule.objects.get_or_create(
         rule_type="panos",
         action="deny",
-        log=True,
+        log_end=True,
         name="Policy Rule 1",
         band=band1,
         position="pre",
@@ -222,7 +224,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule2, _ = PolicyRule.objects.get_or_create(
         rule_type="panos",
         action="allow",
-        log=True,
+        log_end=True,
         name="Policy Rule 2",
         band=band1,
         position="pre",
@@ -246,7 +248,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
     pol_rule3, _ = PolicyRule.objects.get_or_create(
         rule_type="panos",
         action="drop",
-        log=True,
+        log_end=True,
         name="Policy Rule 3",
         band=band1,
         position="pre",
@@ -271,7 +273,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
         rule_type="panos",
         name="END OF ACCESS LIST",
         action="remark",
-        log=False,
+        log_end=False,
         request_id="req4",
         band=band3,
         position="post",
@@ -281,7 +283,7 @@ def create_policy_rule():  # pylint: disable=too-many-locals, too-many-statement
         rule_type="panos",
         name="DENY ALL",
         action="deny",
-        log=False,
+        log_end=False,
         request_id="req5",
         band=band3,
         position="post",
@@ -451,7 +453,7 @@ def create_sample_env():
     assign_policies()
     namespace, _ = Namespace.objects.get_or_create(name="global")
     status = Status.objects.get(name="Active")
-    zoneall, _ = Zone.objects.get_or_create(name="all", status=status)
+    zoneall, _ = Zone.objects.get_or_create(name="all", status=status, zone_group=default_zone_group())
 
     pol_rule1 = PolicyRule.objects.get(name="Policy Rule 1")
     pol_rule1.source_zones.set([Zone.objects.get(name="DMZ")])
